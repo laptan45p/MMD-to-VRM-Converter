@@ -6,9 +6,9 @@ from texture_paths import texture_path
 class TexturePathTest(unittest.TestCase):
     def test_sibling_folder(self):
         with tempfile.TemporaryDirectory() as d:
-            root=Path(d);model=root/'PMX'/'かなた.pmx'
-            expected=root/'texture'/'TEX_PPT_Metal.tga'
-            self.assertEqual(texture_path(model,r'..\texture\TEX_PPT_Metal.tga',root),expected.resolve())
+            root=Path(d);model=root/'PMX'/'model.pmx'
+            expected=root/'texture'/'metal.tga'
+            self.assertEqual(texture_path(model,r'..\texture\metal.tga',root),expected.resolve())
     def test_package_escape_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);model=root/'PMX'/'m.pmx'
