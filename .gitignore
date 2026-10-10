@@ -1,0 +1,42 @@
+# Local settings and generated work
+settings.json
+logs/
+models/
+input/
+output/
+dist/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+*.conversion.json
+*.tmp
+
+# Model assets and binary deliverables are not source code
+*.[pP][mM][xX]
+*.[pP][mM][dD]
+*.[vV][rR][mM]
+*.[gG][lL][bB]
+*.[gG][lL][tT][fF]
+*.blend
+*.blend1
+*.[zZ][iI][pP]
+*.7z
+*.[pP][nN][gG]
+*.[jJ][pP][gG]
+*.[jJ][pP][eE][gG]
+*.[tT][gG][aA]
+*.[bB][mM][pP]
+*.sph
+*.spa
+
+# Local secrets and editor/OS files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
