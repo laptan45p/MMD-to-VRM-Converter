@@ -6,8 +6,8 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.2.1 修正版'
-$form.Size = New-Object System.Drawing.Size(820,710)
+$form.Text = 'MMD -> VRM 0.x / 0.3.1'
+$form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
 $form.MinimumSize = $form.Size
@@ -33,15 +33,50 @@ $title=Field 'モデル名 (任意)' 140 ''
 $author=Field 'モデルの作者' 180 ''
 $license=Field '利用条件URL' 220 ''
 $note=New-Object System.Windows.Forms.Label
-$note.Text='先にBlenderで「MMD Tools」をインストールしてください。物理は未対応です。'
+$note.Text='先にBlenderで「MMD Tools」をインストールしてください。揺れはボーン名から仮設定します。'
 $note.Location=New-Object System.Drawing.Point(15,260);$note.Size=New-Object System.Drawing.Size(765,30)
 $form.Controls.Add($note)
+$script:springControls=@{}
+$names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸'}
+$values=@{hair=@(0.8,0.4,0.04,0.012);ribbon=@(1.1,0.45,0.03,0.008);sleeve=@(1.8,0.55,0.04,0.012);skirt=@(2.3,0.6,0.03,0.014);chest=@(2.5,0.6,0,0.006)}
+$header=New-Object System.Windows.Forms.Label
+$header.Text='揺れの部位                  硬さ                 減衰                 重力                 半径 (m)'
+$header.Location=New-Object System.Drawing.Point(15,292);$header.Size=New-Object System.Drawing.Size(765,25);$form.Controls.Add($header)
+$row=0
+foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
+    $y=320+$row*32
+    $enabled=New-Object System.Windows.Forms.CheckBox
+    $enabled.Text=$names[$category];$enabled.Checked=$true
+    $enabled.Location=New-Object System.Drawing.Point(15,$y);$enabled.Size=New-Object System.Drawing.Size(160,26);$form.Controls.Add($enabled)
+    $controls=@{enabled=$enabled};$column=0
+    foreach($key in @('stiffness','drag','gravity','radius')){
+        $number=New-Object System.Windows.Forms.NumericUpDown
+        $number.DecimalPlaces=3;$number.Minimum=0
+        $number.Maximum=if($key -eq 'stiffness'){10}elseif($key -eq 'radius'){0.1}else{1}
+        $number.Increment=if($key -eq 'radius'){0.001}else{0.05}
+        $number.Value=$values[$category][$column]
+        $number.Location=New-Object System.Drawing.Point((185+$column*140),$y);$number.Size=New-Object System.Drawing.Size(120,26)
+        $form.Controls.Add($number);$controls[$key]=$number;$column++
+    }
+    $script:springControls[$category]=$controls;$row++
+}
+$collisions=New-Object System.Windows.Forms.CheckBox
+$collisions.Text='髪・衣装の衝突判定を追加（仮設定） / 胸は控えめな初期値'
+$collisions.Checked=$true;$collisions.Location=New-Object System.Drawing.Point(15,485);$collisions.Size=New-Object System.Drawing.Size(765,26);$form.Controls.Add($collisions)
+function SpringOptions {
+    $options=@{colliders=$collisions.Checked}
+    foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
+        $c=$script:springControls[$category]
+        $options[$category]=@{enabled=$c.enabled.Checked;stiffness=[double]$c.stiffness.Value;drag=[double]$c.drag.Value;gravity=[double]$c.gravity.Value;radius=[double]$c.radius.Value}
+    }
+    return $options
+}
 $logBox=New-Object System.Windows.Forms.TextBox
 $logBox.Multiline=$true;$logBox.ReadOnly=$true;$logBox.ScrollBars='Both';$logBox.WordWrap=$false
-$logBox.Location=New-Object System.Drawing.Point(15,350);$logBox.Size=New-Object System.Drawing.Size(765,300)
+$logBox.Location=New-Object System.Drawing.Point(15,565);$logBox.Size=New-Object System.Drawing.Size(765,290)
 $logBox.Anchor='Top,Bottom,Left,Right';$form.Controls.Add($logBox)
 $status=New-Object System.Windows.Forms.Label
-$status.Text='待機中';$status.Location=New-Object System.Drawing.Point(230,305);$status.Size=New-Object System.Drawing.Size(550,30)
+$status.Text='待機中';$status.Location=New-Object System.Drawing.Point(230,525);$status.Size=New-Object System.Drawing.Size(550,30)
 $form.Controls.Add($status)
 $browseBlender=Button '選択' 700 18 {
     $d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='Blender|blender.exe'
@@ -62,6 +97,19 @@ $settings=Join-Path $root 'settings.json'
 if(Test-Path $settings){
     try{$s=Get-Content -Raw -Encoding UTF8 $settings|ConvertFrom-Json
         $blender.Text=$s.blender;$author.Text=$s.author;$license.Text=$s.license_url
+        if($s.spring_options){
+            $collisions.Checked=[bool]$s.spring_options.colliders
+            foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
+                $saved=$s.spring_options.$category
+                if($saved){
+                    $script:springControls[$category].enabled.Checked=[bool]$saved.enabled
+                    foreach($key in @('stiffness','drag','gravity','radius')){
+                        $value=[decimal]$saved.$key;$control=$script:springControls[$category][$key]
+                        if($value -ge $control.Minimum -and $value -le $control.Maximum){$control.Value=$value}
+                    }
+                }
+            }
+        }
     }catch{}
 }
 if(-not $blender.Text){
@@ -92,7 +140,7 @@ $timer.Add_Tick({
         $script:process.Dispose();$script:process=$null;$runButton.Enabled=$true;$stopButton.Enabled=$false
     }
 })
-$runButton=Button '変換開始' 15 300 {
+$runButton=Button '変換開始' 15 520 {
     try{
         if(-not(Test-Path -LiteralPath $blender.Text -PathType Leaf)){throw 'Blender.exeを指定してください。'}
         if([System.IO.Path]::GetFileName($blender.Text) -ne 'blender.exe'){throw 'blender.exeを選んでください。'}
@@ -107,10 +155,10 @@ $runButton=Button '変換開始' 15 300 {
         }
         $script:job=Join-Path (Join-Path $root 'logs') ([DateTime]::Now.ToString('yyyyMMdd-HHmmss')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,6))
         New-Item -ItemType Directory -Path $script:job -Force|Out-Null
-        $cfg=@{input=$inputFile.Text;output=$out;work=$script:job;log=(Join-Path $script:job 'conversion.log');title=$title.Text;author=$author.Text;license_url=$license.Text}
+        $cfg=@{input=$inputFile.Text;output=$out;work=$script:job;log=(Join-Path $script:job 'conversion.log');title=$title.Text;author=$author.Text;license_url=$license.Text;spring_options=(SpringOptions)}
         $cfgPath=Join-Path $script:job 'config.json'
-        [System.IO.File]::WriteAllText($cfgPath,($cfg|ConvertTo-Json),[System.Text.UTF8Encoding]::new($false))
-        [System.IO.File]::WriteAllText($settings,(@{blender=$blender.Text;author=$author.Text;license_url=$license.Text}|ConvertTo-Json),[System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($cfgPath,($cfg|ConvertTo-Json -Depth 8),[System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::WriteAllText($settings,(@{blender=$blender.Text;author=$author.Text;license_url=$license.Text;spring_options=(SpringOptions)}|ConvertTo-Json -Depth 8),[System.Text.UTF8Encoding]::new($false))
         $worker=Join-Path $root 'convert.py'
         $pi=New-Object System.Diagnostics.ProcessStartInfo
         $pi.FileName=$blender.Text
@@ -125,7 +173,7 @@ $runButton=Button '変換開始' 15 300 {
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message,'エラー')|Out-Null
     }
 }
-$stopButton=Button '停止' 115 300 {
+$stopButton=Button '停止' 115 520 {
     if($script:process -and -not $script:process.HasExited){
         $script:process.Kill();$status.Text='停止しています'
     }

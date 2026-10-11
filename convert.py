@@ -2,7 +2,9 @@
 import sys, json, traceback, zipfile, struct, io, os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vrm_core import MAP, read_glb, write_glb, package_vrm
+from vrm_core import read_glb, write_glb, package_vrm
+from bone_mapping import map_bones, validate_fingers
+from spring_bones import setup_springs
 from normalize import normalize
 from texture_paths import texture_path
 
@@ -119,9 +121,10 @@ def run():
     for bone in arm.data.bones:
         aliases[bone.name]=bone.name
         pb=arm.pose.bones.get(bone.name)
-        if pb and hasattr(pb,'mmd_bone'):
+        if pb and hasattr(pb,'mmd_bone') and pb.mmd_bone.name_j:
             aliases[pb.mmd_bone.name_j]=bone.name
-    bone_names={role:aliases[name] for role,names in MAP.items() for name in names if name in aliases}
+    bone_names,mapping_warnings=map_bones(aliases)
+    original_names={actual:name for name,actual in aliases.items()}
     log('人型ボーン候補: '+str(len(bone_names)))
     # Some MMD models place upper/lower body as siblings. VRM requires hips->spine.
     if 'hips' in bone_names and 'spine' in bone_names:
@@ -145,7 +148,7 @@ def run():
     used={slot.material for obj in meshes for slot in obj.material_slots if slot.material}
     material_by_name={m['name']:m for m in pmx_materials}
     exported_materials={}
-    warnings=[]
+    warnings=list(mapping_warnings)
     for mat in used:
         japanese=getattr(getattr(mat,'mmd_material',None),'name_j','')
         pm=material_by_name.get(japanese) or material_by_name.get(mat.name)
@@ -203,13 +206,17 @@ def run():
     log('6/6 VRM 0.xを作成しています')
     node_names={n.get('name'):i for i,n in enumerate(document['nodes'])}
     mapped={role:node_names[name] for role,name in bone_names.items() if name in node_names}
+    finger_report=validate_fingers(document,mapped)
+    bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     chunks=normalize(document,chunks,mapped,log)
     report=package_vrm(document,bone_names,config.get('title') or title,
                        config['author'],config.get('license_url',''))
-    report.update({'blender':bpy.app.version_string,'source':str(model),
+    spring_report=setup_springs(document,original_names,config.get('spring_options'))
+    report.update({'fingerReport':finger_report,'springBoneReport':spring_report,
+                   'springBones':bool(spring_report['groups']),'blender':bpy.app.version_string,'source':str(model),
                    'normalized':True,'tposeBaked':True,
-                   'vertices':vertices,'triangles':triangles,'warnings':warnings+[
-                     '髪・袖・スカートの物理、材質モーフ、ボーンモーフ、MMD特殊シェーダーは未変換です。',
+                   'vertices':vertices,'triangles':triangles,'warnings':warnings+finger_report['warnings']+spring_report['warnings']+[
+                     'MMD剛体・ジョイントの完全再現、材質モーフ、ボーンモーフ、MMD特殊シェーダーは未対応です。',
                      '表情はglTFに出力された頂点モーフのみ対応します。',
                      'VRM対応ソフトで見た目・Tポーズ・ボーン・表情を確認してください。',
                      'VRChat用設定・アップロードは別途必要です。']})
