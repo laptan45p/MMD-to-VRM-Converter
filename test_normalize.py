@@ -51,4 +51,23 @@ class NormalizationTest(unittest.TestCase):
         ibm=np.frombuffer(binary,dtype='<f4',offset=v['byteOffset'],count=32).reshape(2,4,4).transpose(0,2,1)
         for i,j in enumerate([1,4]):np.testing.assert_allclose(new[j]@ibm[i],np.eye(4),atol=1e-6)
 
+    def test_both_side_conventions_stay_outward_and_idempotent(self):
+        import test_body_template
+        for reverse in (False,True):
+            doc,chunks,bones=test_body_template.fixture()
+            if reverse:
+                for part in ('UpperArm','LowerArm','Hand'):
+                    bones['left'+part],bones['right'+part]=bones['right'+part],bones['left'+part]
+            chunks=normalize(doc,chunks,bones,lambda _:None)
+            first,_=world_matrices(doc)
+            center=first[bones['head']][0,3]
+            for side in ('left','right'):
+                shoulder=first[bones[side+'UpperArm']][0,3]-center
+                hand=first[bones[side+'Hand']][0,3]-center
+                self.assertGreater(shoulder*hand,0)
+                self.assertGreater(abs(hand),abs(shoulder))
+            normalize(doc,chunks,bones,lambda _:None)
+            second,_=world_matrices(doc)
+            np.testing.assert_allclose(first,second,atol=1e-6)
+
 if __name__=='__main__':unittest.main()

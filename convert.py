@@ -7,6 +7,7 @@ from bone_mapping import map_bones, validate_fingers
 from spring_bones import setup_springs
 from body_template import replace_body, active_joints
 from blender_image_io import BlenderImages
+from neck_stitch import stitch_neck
 from normalize import normalize
 from texture_paths import texture_path
 
@@ -221,6 +222,10 @@ def run():
         log('補完VRMの体を組み合わせています')
         images=BlenderImages(config['work'])
         chunks,body_report,body_materials=replace_body(document,chunks,mapped,template,config.get('body_options'),log,images.decode,images.encode)
+        body_options=config.get('body_options') or {}
+        document,chunks,neck_report=stitch_neck(document,chunks,mapped,body_report['neckCutY'],body_options.get('neck_join',True),images.decode)
+        body_report['neckJoin']=neck_report;body_report['warnings'].extend(neck_report['warnings'])
+        log('首の自動接合: '+neck_report['status'])
         match=body_report['skinMatching']
         log('肌色補正: '+match['status']+' / 元材質: '+str(match.get('sourceMaterial','未検出'))+' / 補完材質: '+str(match.get('templateMaterial','未検出')))
         if match['status'] in ('not_detected','sample_failed'):

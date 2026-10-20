@@ -358,7 +358,7 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
         'width':width,'scale':scale,'shape':shapes,'skinMatching':skin_report,'keptHeadTriangles':kept,'removedSourceTriangles':removed,
         'bodyTriangles':sum(len(triangles(dst,p)) for p in used_primitives),
         'mappedJoints':len(unique),'addedJoints':len(new_positions),'templateMetadata':metadata,
-        'warnings':skin_report['warnings']+['素体合成は実験機能です。首は自動溶接せず、肌色・つなぎ目・体形は調整が必要です。',
+        'warnings':skin_report['warnings']+['素体合成は実験機能です。首の接合状態と、肌色・つなぎ目・体形を確認してください。',
                     '頭の保持はウェイトから推定します。頭に追従する衣装が残る場合があります。',
                     '補完素体の表情・体形モーフは移植しません。胸は元のウェイトとボーンを利用して揺れを再設定します。']}
     log('素体合成: 頭の面 '+str(kept)+' / 体の面 '+str(report['bodyTriangles']))

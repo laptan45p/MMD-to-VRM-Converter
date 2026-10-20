@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.5.0'
+$form.Text = 'MMD -> VRM 0.x / 0.6.0'
 $form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
@@ -86,13 +86,16 @@ $templateSkinLabel=New-Object System.Windows.Forms.Label
 $templateSkinLabel.Text='補完VRMの肌材質名';$templateSkinLabel.Location=New-Object System.Drawing.Point(15,350);$templateSkinLabel.Size=New-Object System.Drawing.Size(180,26);$appearance.Controls.Add($templateSkinLabel)
 $templateSkin=New-Object System.Windows.Forms.TextBox
 $templateSkin.Location=New-Object System.Drawing.Point(200,348);$templateSkin.Size=New-Object System.Drawing.Size(390,26);$appearance.Controls.Add($templateSkin)
+$neckJoin=New-Object System.Windows.Forms.CheckBox
+$neckJoin.Text='首を自動接合する（輪状の境界を検出できた場合）';$neckJoin.Checked=$true
+$neckJoin.Location=New-Object System.Drawing.Point(15,390);$neckJoin.Size=New-Object System.Drawing.Size(580,26);$appearance.Controls.Add($neckJoin)
 $appearanceHint=New-Object System.Windows.Forms.Label
-$appearanceHint.Text='材質名は空欄で自動判定。肌・顔の色を基準にします。自動判定できない場合はログの材質名を指定してください。体型は骨格に合わせた素体からの調整で、服の下の体型を推定する機能ではありません。変更後は再変換が必要です。'
-$appearanceHint.Location=New-Object System.Drawing.Point(15,392);$appearanceHint.Size=New-Object System.Drawing.Size(580,95);$appearance.Controls.Add($appearanceHint)
+$appearanceHint.Text='材質名は空欄で自動判定。体型は基準の素体からの調整です。首の接合結果はログに表示します。変更後は再変換してください。'
+$appearanceHint.Location=New-Object System.Drawing.Point(15,425);$appearanceHint.Size=New-Object System.Drawing.Size(580,70);$appearance.Controls.Add($appearanceHint)
 $skinMatch.Add_CheckedChanged({$skinStrength.Enabled=$skinMatch.Checked;$sourceSkin.Enabled=$skinMatch.Checked;$templateSkin.Enabled=$skinMatch.Checked})
 $resetAppearance=New-Object System.Windows.Forms.Button
 $resetAppearance.Text='初期値に戻す';$resetAppearance.Location=New-Object System.Drawing.Point(15,505);$resetAppearance.Size=New-Object System.Drawing.Size(140,30)
-$resetAppearance.Add_Click({foreach($control in $script:bodyShapes.Values){$control.Value=1};$skinMatch.Checked=$true;$skinStrength.Value=0.8;$sourceSkin.Text='';$templateSkin.Text=''})
+$resetAppearance.Add_Click({foreach($control in $script:bodyShapes.Values){$control.Value=1};$skinMatch.Checked=$true;$skinStrength.Value=0.8;$sourceSkin.Text='';$templateSkin.Text='';$neckJoin.Checked=$true})
 $appearance.Controls.Add($resetAppearance)
 $closeAppearance=New-Object System.Windows.Forms.Button
 $closeAppearance.Text='閉じる';$closeAppearance.Location=New-Object System.Drawing.Point(480,505);$closeAppearance.Size=New-Object System.Drawing.Size(110,30)
@@ -106,7 +109,7 @@ $bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false
 function BodyOptions {
     $shapes=@{}
     foreach($key in $script:bodyShapes.Keys){$shapes[$key]=[double]$script:bodyShapes[$key].Value}
-    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text}
+    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text}
 }
 $script:springControls=@{}
 $names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸'}
@@ -178,6 +181,7 @@ if(Test-Path $settings){
                     if($v -ge 0.5 -and $v -le 1.5){$script:bodyShapes[$key].Value=$v}
                 }
             }
+            if($s.body_options.PSObject.Properties.Name -contains 'neck_join'){$neckJoin.Checked=[bool]$s.body_options.neck_join}
             if($s.body_options.PSObject.Properties.Name -contains 'skin_match'){$skinMatch.Checked=[bool]$s.body_options.skin_match}
             if($s.body_options.PSObject.Properties.Name -contains 'skin_strength'){
                 $v=[decimal]$s.body_options.skin_strength

@@ -63,15 +63,21 @@ def normalize(doc,chunks,bones,log=print):
         rot=np.eye(3)+skew+skew@skew/(1+cos)
         change=np.eye(4);change[:3,:3]=rot;change[:3,3]=pivot-rot@pivot
         for i in subtree(start):posed[i]=change@posed[i]
-    for side,sign in [('left',1),('right',-1)]:
-        a,b,c=[bones[side+part] for part in ['UpperArm','LowerArm','Hand']]
-        align(a,b,[sign,0,0]);align(b,c,[sign,0,0])
-    # VRM0 GLB faces -Z. MMD importer/glTF output commonly faces +Z.
+    # Orient the avatar first, then extend each arm away from its torso.
+    # VRM/MMD exporters use different X-side conventions. Forcing left to +X
+    # can fold a normalized template's arms across its body.
     eyes=[bones.get('leftEye'),bones.get('rightEye')]
     head=bones['head']
-    forward=np.mean([old[i][2,3] for i in eyes if i is not None])-old[head][2,3] if all(i is not None for i in eyes) else 1
+    forward=np.mean([old[i][2,3] for i in eyes if i is not None])-old[head][2,3] if all(i is not None for i in eyes) else -1
     turn=np.diag([-1,1,-1,1]) if forward>0 else np.eye(4)
     posed=[turn@m for m in posed]
+    for side in ('left','right'):
+        a,b,c=[bones[side+part] for part in ['UpperArm','LowerArm','Hand']]
+        lateral=posed[a][0,3]-posed[head][0,3]
+        if abs(lateral)<1e-6:lateral=posed[c][0,3]-posed[head][0,3]
+        if abs(lateral)<1e-6:raise ValueError('Arm side cannot be determined')
+        sign=1 if lateral>0 else -1
+        align(a,b,[sign,0,0]);align(b,c,[sign,0,0])
     log('VRM0 Tポーズ・ボーン回転を正規化しています')
     updated=set()
     for ni,node in enumerate(doc['nodes']):
