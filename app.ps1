@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.6.0'
+$form.Text = 'MMD -> VRM 0.x / 0.7.0'
 $form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
@@ -37,7 +37,7 @@ $modeLabel.Text='変換モード';$modeLabel.Location=New-Object System.Drawing.
 $mode=New-Object System.Windows.Forms.ComboBox
 $mode.DropDownStyle='DropDownList';$mode.Location=New-Object System.Drawing.Point(170,258);$mode.Size=New-Object System.Drawing.Size(310,26)
 [void]$mode.Items.Add('通常変換（服付き）');[void]$mode.Items.Add('素体のみ（実験機能）');$mode.SelectedIndex=0;$form.Controls.Add($mode)
-$bodyTemplate=Field '補完用VRM 0.x' 300 ''
+$bodyTemplate=Field '補完素体' 300 ''
 $bodyMesh=Field '体メッシュ名 (任意)' 340 ''
 $bodyHint=New-Object System.Windows.Forms.Label
 $bodyHint.Text='空欄は体メッシュを自動選択。首・肌色は要調整。MMD Toolsが必要です。'
@@ -53,7 +53,7 @@ $bodyWidth=New-Object System.Windows.Forms.NumericUpDown
 $bodyWidth.DecimalPlaces=2;$bodyWidth.Minimum=0.5;$bodyWidth.Maximum=1.5;$bodyWidth.Increment=0.05;$bodyWidth.Value=1
 $bodyWidth.Location=New-Object System.Drawing.Point(500,378);$bodyWidth.Size=New-Object System.Drawing.Size(120,26);$form.Controls.Add($bodyWidth)
 $browseTemplate=Button '選択' 700 298 {
-    $d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='補完用VRM|*.vrm'
+    $d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='補完素体|*.vrm;*.fbx;*.zip|VRM|*.vrm|FBX|*.fbx|ZIP|*.zip'
     if($d.ShowDialog() -eq 'OK'){$bodyTemplate.Text=$d.FileName}
 }
 $appearance=New-Object System.Windows.Forms.Form
@@ -83,7 +83,7 @@ $sourceSkinLabel.Text='元MMDの肌材質名';$sourceSkinLabel.Location=New-Obje
 $sourceSkin=New-Object System.Windows.Forms.TextBox
 $sourceSkin.Location=New-Object System.Drawing.Point(200,308);$sourceSkin.Size=New-Object System.Drawing.Size(390,26);$appearance.Controls.Add($sourceSkin)
 $templateSkinLabel=New-Object System.Windows.Forms.Label
-$templateSkinLabel.Text='補完VRMの肌材質名';$templateSkinLabel.Location=New-Object System.Drawing.Point(15,350);$templateSkinLabel.Size=New-Object System.Drawing.Size(180,26);$appearance.Controls.Add($templateSkinLabel)
+$templateSkinLabel.Text='補完素体の肌材質名';$templateSkinLabel.Location=New-Object System.Drawing.Point(15,350);$templateSkinLabel.Size=New-Object System.Drawing.Size(180,26);$appearance.Controls.Add($templateSkinLabel)
 $templateSkin=New-Object System.Windows.Forms.TextBox
 $templateSkin.Location=New-Object System.Drawing.Point(200,348);$templateSkin.Size=New-Object System.Drawing.Size(390,26);$appearance.Controls.Add($templateSkin)
 $neckJoin=New-Object System.Windows.Forms.CheckBox
@@ -101,15 +101,55 @@ $closeAppearance=New-Object System.Windows.Forms.Button
 $closeAppearance.Text='閉じる';$closeAppearance.Location=New-Object System.Drawing.Point(480,505);$closeAppearance.Size=New-Object System.Drawing.Size(110,30)
 $closeAppearance.Add_Click({$appearance.Hide()});$appearance.Controls.Add($closeAppearance)
 $appearanceButton=Button '体型・肌色' 500 258 {[void]$appearance.ShowDialog($form)}
+$fbxSettings=New-Object System.Windows.Forms.Form
+$fbxSettings.Text='FBX補完素体の設定';$fbxSettings.Size=New-Object System.Drawing.Size(640,300);$fbxSettings.StartPosition='CenterParent'
+$fbxSettings.FormBorderStyle='FixedDialog';$fbxSettings.MaximizeBox=$false;$fbxSettings.MinimizeBox=$false;$fbxSettings.ShowInTaskbar=$false;$fbxSettings.Font=$form.Font
+function FbxField($label,$y){
+    $l=New-Object System.Windows.Forms.Label;$l.Text=$label;$l.Location=New-Object System.Drawing.Point(15,$y);$l.Size=New-Object System.Drawing.Size(165,26);$fbxSettings.Controls.Add($l)
+    $t=New-Object System.Windows.Forms.TextBox;$t.Location=New-Object System.Drawing.Point(185,$y);$t.Size=New-Object System.Drawing.Size(400,26);$fbxSettings.Controls.Add($t);return $t
+}
+$fbxTexture=FbxField '肌テクスチャ (任意)' 20
+$fbxTexture.Size=New-Object System.Drawing.Size(300,26)
+$fbxAuthor=FbxField '補完素材の作者' 60
+$fbxLicense=FbxField '利用条件URL' 100
+$fbxBrowse=New-Object System.Windows.Forms.Button
+$fbxBrowse.Text='選択';$fbxBrowse.Location=New-Object System.Drawing.Point(500,18);$fbxBrowse.Size=New-Object System.Drawing.Size(85,29)
+$fbxBrowse.Add_Click({$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='肌テクスチャ|*.png;*.jpg;*.jpeg;*.tga;*.bmp';if($d.ShowDialog() -eq 'OK'){$fbxTexture.Text=$d.FileName}});$fbxSettings.Controls.Add($fbxBrowse)
+$fbxHint=New-Object System.Windows.Forms.Label
+$fbxHint.Text='肌テクスチャが空欄なら同梱のBaseBody/Skin1を優先します。別の色はZIPを展開して画像を選んでください。VRM入力には、この画面の設定は適用しません。'
+$fbxHint.Location=New-Object System.Drawing.Point(15,145);$fbxHint.Size=New-Object System.Drawing.Size(570,65);$fbxSettings.Controls.Add($fbxHint)
+$fbxClose=New-Object System.Windows.Forms.Button
+$fbxClose.Text='閉じる';$fbxClose.Location=New-Object System.Drawing.Point(480,220);$fbxClose.Size=New-Object System.Drawing.Size(110,30);$fbxClose.Add_Click({$fbxSettings.Hide()});$fbxSettings.Controls.Add($fbxClose)
+$fbxSettingsButton=Button 'FBX設定' 610 258 {[void]$fbxSettings.ShowDialog($form)}
+$fbxSettings=New-Object System.Windows.Forms.Form
+$fbxSettings.Text='FBX補完素体の設定';$fbxSettings.Size=New-Object System.Drawing.Size(640,300);$fbxSettings.StartPosition='CenterParent'
+$fbxSettings.FormBorderStyle='FixedDialog';$fbxSettings.MaximizeBox=$false;$fbxSettings.MinimizeBox=$false;$fbxSettings.ShowInTaskbar=$false;$fbxSettings.Font=$form.Font
+function FbxField($label,$y){
+    $l=New-Object System.Windows.Forms.Label;$l.Text=$label;$l.Location=New-Object System.Drawing.Point(15,$y);$l.Size=New-Object System.Drawing.Size(165,26);$fbxSettings.Controls.Add($l)
+    $t=New-Object System.Windows.Forms.TextBox;$t.Location=New-Object System.Drawing.Point(185,$y);$t.Size=New-Object System.Drawing.Size(400,26);$fbxSettings.Controls.Add($t);return $t
+}
+$fbxTexture=FbxField '肌テクスチャ (任意)' 20
+$fbxTexture.Size=New-Object System.Drawing.Size(300,26)
+$fbxAuthor=FbxField '補完素材の作者' 60
+$fbxLicense=FbxField '利用条件URL' 100
+$fbxBrowse=New-Object System.Windows.Forms.Button
+$fbxBrowse.Text='選択';$fbxBrowse.Location=New-Object System.Drawing.Point(500,18);$fbxBrowse.Size=New-Object System.Drawing.Size(85,29)
+$fbxBrowse.Add_Click({$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='肌テクスチャ|*.png;*.jpg;*.jpeg;*.tga;*.bmp';if($d.ShowDialog() -eq 'OK'){$fbxTexture.Text=$d.FileName}});$fbxSettings.Controls.Add($fbxBrowse)
+$fbxHint=New-Object System.Windows.Forms.Label
+$fbxHint.Text='肌テクスチャが空欄なら同梱のBaseBody/Skin1を優先します。別の色はZIPを展開して画像を選んでください。VRM入力には、この画面の設定は適用しません。'
+$fbxHint.Location=New-Object System.Drawing.Point(15,145);$fbxHint.Size=New-Object System.Drawing.Size(570,65);$fbxSettings.Controls.Add($fbxHint)
+$fbxClose=New-Object System.Windows.Forms.Button
+$fbxClose.Text='閉じる';$fbxClose.Location=New-Object System.Drawing.Point(480,220);$fbxClose.Size=New-Object System.Drawing.Size(110,30);$fbxClose.Add_Click({$fbxSettings.Hide()});$fbxSettings.Controls.Add($fbxClose)
+$fbxSettingsButton=Button 'FBX設定' 610 258 {[void]$fbxSettings.ShowDialog($form)}
 $mode.Add_SelectedIndexChanged({
     $on=($mode.SelectedIndex -eq 1)
-    $bodyTemplate.Enabled=$on;$bodyMesh.Enabled=$on;$neckOffset.Enabled=$on;$bodyWidth.Enabled=$on;$browseTemplate.Enabled=$on;$appearanceButton.Enabled=$on
+    $bodyTemplate.Enabled=$on;$bodyMesh.Enabled=$on;$neckOffset.Enabled=$on;$bodyWidth.Enabled=$on;$browseTemplate.Enabled=$on;$appearanceButton.Enabled=$on;$fbxSettingsButton.Enabled=$on;$fbxSettingsButton.Enabled=$on
 })
-$bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false;$bodyWidth.Enabled=$false;$browseTemplate.Enabled=$false;$appearanceButton.Enabled=$false
+$bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false;$bodyWidth.Enabled=$false;$browseTemplate.Enabled=$false;$appearanceButton.Enabled=$false;$fbxSettingsButton.Enabled=$false;$fbxSettingsButton.Enabled=$false
 function BodyOptions {
     $shapes=@{}
     foreach($key in $script:bodyShapes.Keys){$shapes[$key]=[double]$script:bodyShapes[$key].Value}
-    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text}
+    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text;fbx_texture=$fbxTexture.Text;fbx_author=$fbxAuthor.Text;fbx_license_url=$fbxLicense.Text}
 }
 $script:springControls=@{}
 $names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸'}
@@ -175,6 +215,8 @@ if(Test-Path $settings){
         if($s.body_template){$bodyTemplate.Text=$s.body_template}
         if($s.body_options){
             $bodyMesh.Text=$s.body_options.mesh_name
+            $fbxTexture.Text=$s.body_options.fbx_texture;$fbxAuthor.Text=$s.body_options.fbx_author;$fbxLicense.Text=$s.body_options.fbx_license_url
+            $fbxTexture.Text=$s.body_options.fbx_texture;$fbxAuthor.Text=$s.body_options.fbx_author;$fbxLicense.Text=$s.body_options.fbx_license_url
             if($s.body_options.shape){
                 foreach($key in $script:bodyShapes.Keys){
                     $v=[decimal]$s.body_options.shape.$key
@@ -241,7 +283,7 @@ $runButton=Button '変換開始' 15 672 {
         if(-not(Test-Path -LiteralPath $blender.Text -PathType Leaf)){throw 'Blender.exeを指定してください。'}
         if([System.IO.Path]::GetFileName($blender.Text) -ne 'blender.exe'){throw 'blender.exeを選んでください。'}
         if(-not(Test-Path -LiteralPath $inputFile.Text -PathType Leaf)){throw 'PMXまたはZIPを指定してください。'}
-        if($mode.SelectedIndex -eq 1 -and -not(Test-Path -LiteralPath $bodyTemplate.Text -PathType Leaf)){throw '補完用VRMを選んでください。'}
+        if($mode.SelectedIndex -eq 1 -and -not(Test-Path -LiteralPath $bodyTemplate.Text -PathType Leaf)){throw '補完素体のVRM / FBX / ZIPを選んでください。'}
         if(-not $author.Text.Trim()){throw '元モデルの作者名を入力してください。'}
         if(-not $outputFile.Text.Trim()){throw '保存先を指定してください。'}
         $out=[System.IO.Path]::GetFullPath($outputFile.Text)

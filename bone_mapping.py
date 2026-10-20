@@ -12,6 +12,10 @@ def map_bones(aliases):
     result = {}; warnings = []
     for role, names in MAP.items():
         choices = list(names) + [role]
+        for side,initial in (('left','l'),('right','r')):
+            if role.startswith(side):
+                suffix=role[len(side):];choices.append(initial+suffix)
+                if suffix=='Toes':choices += [initial+'Toe',side+'Toe']
         if 'Index' in role:
             choices += [n.replace('人指','人差指') for n in names]
             choices += [n.replace('人指','人差し指') for n in names]

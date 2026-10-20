@@ -21,7 +21,7 @@ def classify(name):
         ('ribbon', r'リボン|紐|ribbon|bow|strap'),
         ('hair', r'髪|おさげ|アホ毛|テール|hair|ponytail|pigtail|bangs'),
         ('sleeve', r'袖|sleeve'), ('skirt', r'スカート|skirt'),
-        ('chest', r'胸|breast|bust|boob')]:
+        ('chest', r'胸|breast|bust|boob|oppai')]:
         if re.search(pattern, key): return category
     return None
 

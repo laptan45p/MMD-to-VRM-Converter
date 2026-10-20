@@ -8,6 +8,7 @@ from spring_bones import setup_springs
 from body_template import replace_body, active_joints
 from blender_image_io import BlenderImages
 from neck_stitch import stitch_neck
+from template_source import prepare_template
 from normalize import normalize
 from texture_paths import texture_path
 
@@ -95,7 +96,7 @@ def run():
     if mode not in ('normal','body_only'):raise ValueError('不明な変換モードです。')
     if mode=='body_only':
         template=Path(config.get('body_template',''))
-        if not template.is_file() or template.suffix.lower()!='.vrm':raise ValueError('補完用VRMを指定してください。')
+        if not template.is_file() or template.suffix.lower() not in ('.vrm','.fbx','.zip'):raise ValueError('補完素体のVRM / FBX / ZIPを指定してください。')
     model=input_model()
     title,textures,pmx_materials,vertices,triangles=material_data(model)
     log(f'頂点 {vertices:,} / 三角形 {triangles:,} / 材質 {len(pmx_materials)}')
@@ -221,7 +222,10 @@ def run():
     if mode=='body_only':
         log('補完VRMの体を組み合わせています')
         images=BlenderImages(config['work'])
+        template,template_source_report=prepare_template(template,config['work'],config.get('body_options'),log)
         chunks,body_report,body_materials=replace_body(document,chunks,mapped,template,config.get('body_options'),log,images.decode,images.encode)
+        body_report['templateSourceReport']=template_source_report
+        body_report['warnings'].extend(template_source_report['warnings'])
         body_options=config.get('body_options') or {}
         document,chunks,neck_report=stitch_neck(document,chunks,mapped,body_report['neckCutY'],body_options.get('neck_join',True),images.decode)
         body_report['neckJoin']=neck_report;body_report['warnings'].extend(neck_report['warnings'])
@@ -242,7 +246,7 @@ def run():
         meta=document['extensions']['VRM']['meta'];donor_meta=body_report['templateMetadata']
         reference='Body template: '+donor_meta.get('title','')+' / Author: '+donor_meta.get('author','')+' / License: '+donor_meta.get('otherLicenseUrl','')
         meta['reference']=reference
-        if donor_meta.get('author') and donor_meta['author']!=meta['author']:meta['author']+=' / '+donor_meta['author']
+        if donor_meta.get('author') and donor_meta['author'] not in (meta['author'],'未指定'):meta['author']+=' / '+donor_meta['author']
         for key in ('allowedUserName','violentUssageName','sexualUssageName','commercialUssageName'):
             value=donor_meta.get(key)
             if key=='allowedUserName' and value in ('OnlyAuthor','ExplicitlyLicensedPerson'):meta[key]='OnlyAuthor'

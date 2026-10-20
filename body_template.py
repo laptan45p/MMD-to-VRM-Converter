@@ -105,6 +105,9 @@ def select_body(doc, mesh_name=''):
         matches=[i for i,m in enumerate(meshes) if re.search(r'bodyskin|nakedbody|body_naked|素体',m.get('name',''),re.I)]
         if not matches:
             matches=[i for i,m in enumerate(meshes) if re.search(r'^body(?:[._ -]|$)',m.get('name',''),re.I)]
+    if not matches and not mesh_name:
+        skinned={n['mesh'] for n in doc.get('nodes',[]) if 'mesh' in n and 'skin' in n}
+        if len(skinned)==1:matches=list(skinned)
     if len(matches)!=1:
         raise ValueError('補完VRMの体メッシュを1個に特定できません。「体メッシュ名」に指定してください。候補: '+', '.join(m.get('name',str(i)) for i,m in enumerate(meshes)))
     return matches[0]
@@ -205,7 +208,7 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
     def node_regions(j):
         current=j;breast=False
         while current not in role_lookup:
-            breast=breast or bool(re.search(r'breast|bust|胸',donor['nodes'][current].get('name',''),re.I))
+            breast=breast or bool(re.search(r'breast|bust|oppai|胸',donor['nodes'][current].get('name',''),re.I))
             if current not in dp:break
             current=dp[current]
         role=role_lookup.get(current,'')
