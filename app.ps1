@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.8.0'
+$form.Text = 'MMD -> VRM 0.x / 0.9.0'
 $form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
@@ -36,7 +36,7 @@ $modeLabel=New-Object System.Windows.Forms.Label
 $modeLabel.Text='変換モード';$modeLabel.Location=New-Object System.Drawing.Point(15,260);$modeLabel.Size=New-Object System.Drawing.Size(150,25);$form.Controls.Add($modeLabel)
 $mode=New-Object System.Windows.Forms.ComboBox
 $mode.DropDownStyle='DropDownList';$mode.Location=New-Object System.Drawing.Point(170,258);$mode.Size=New-Object System.Drawing.Size(310,26)
-[void]$mode.Items.Add('通常変換（服付き）');[void]$mode.Items.Add('素体のみ（実験機能）');$mode.SelectedIndex=0;$form.Controls.Add($mode)
+[void]$mode.Items.Add('通常変換（服付き）');[void]$mode.Items.Add('素体のみ（元MMDの骨格）');[void]$mode.Items.Add('素体に頭部を移植（実験機能）');$mode.SelectedIndex=0;$form.Controls.Add($mode)
 $bodyTemplate=Field '補完素体' 300 ''
 $bodyMesh=Field '体メッシュ名 (任意)' 340 ''
 $bodyHint=New-Object System.Windows.Forms.Label
@@ -95,7 +95,7 @@ $matchSource.Location=New-Object System.Drawing.Point(15,425);$matchSource.Size=
 $appearanceHint=New-Object System.Windows.Forms.Label
 $appearanceHint.Text='材質名は空欄で自動判定。倍率1.0は自動補正後の体型です。衣装の内側は骨格幅を基準に補正します。変更後は再変換してください。'
 $appearanceHint.Location=New-Object System.Drawing.Point(15,460);$appearanceHint.Size=New-Object System.Drawing.Size(580,70);$appearance.Controls.Add($appearanceHint)
-$skinMatch.Add_CheckedChanged({$skinStrength.Enabled=$skinMatch.Checked;$sourceSkin.Enabled=$skinMatch.Checked;$templateSkin.Enabled=$skinMatch.Checked})
+$skinMatch.Add_CheckedChanged({$skinStrength.Enabled=($skinMatch.Checked -and $mode.SelectedIndex -ne 2);$sourceSkin.Enabled=$skinStrength.Enabled;$templateSkin.Enabled=$skinStrength.Enabled})
 $resetAppearance=New-Object System.Windows.Forms.Button
 $resetAppearance.Text='初期値に戻す';$resetAppearance.Location=New-Object System.Drawing.Point(15,540);$resetAppearance.Size=New-Object System.Drawing.Size(140,30)
 $resetAppearance.Add_Click({foreach($control in $script:bodyShapes.Values){$control.Value=1};$skinMatch.Checked=$true;$skinStrength.Value=0.8;$sourceSkin.Text='';$templateSkin.Text='';$neckJoin.Checked=$true;$matchSource.Checked=$true})
@@ -125,14 +125,20 @@ $fbxClose=New-Object System.Windows.Forms.Button
 $fbxClose.Text='閉じる';$fbxClose.Location=New-Object System.Drawing.Point(480,220);$fbxClose.Size=New-Object System.Drawing.Size(110,30);$fbxClose.Add_Click({$fbxSettings.Hide()});$fbxSettings.Controls.Add($fbxClose)
 $fbxSettingsButton=Button 'FBX設定' 610 258 {[void]$fbxSettings.ShowDialog($form)}
 $mode.Add_SelectedIndexChanged({
-    $on=($mode.SelectedIndex -eq 1)
+    $on=($mode.SelectedIndex -gt 0)
+    $headMode=($mode.SelectedIndex -eq 2)
+    $widthLabel.Text=if($headMode){'頭部の大きさ倍率'}else{'体の幅・厚み倍率'}
+    foreach($control in $script:bodyShapes.Values){$control.Enabled=-not $headMode}
+    $matchSource.Enabled=-not $headMode;$skinMatch.Enabled=-not $headMode
+    $skinStrength.Enabled=(-not $headMode -and $skinMatch.Checked);$sourceSkin.Enabled=(-not $headMode -and $skinMatch.Checked);$templateSkin.Enabled=(-not $headMode -and $skinMatch.Checked)
+    $appearanceHint.Text=if($headMode){'頭部移植では素体の骨格・体型・肌画像を維持します。体型・肌色補正は適用しません。頭部倍率はメイン画面で調整します。首の接合と揺れは設定できます。'}else{'倍率1.0は自動補正後の体型です。衣装の内側は骨格幅を基準に補正します。変更後は再変換してください。'}
     $bodyTemplate.Enabled=$on;$bodyMesh.Enabled=$on;$neckOffset.Enabled=$on;$bodyWidth.Enabled=$on;$browseTemplate.Enabled=$on;$appearanceButton.Enabled=$on;$fbxSettingsButton.Enabled=$on
 })
 $bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false;$bodyWidth.Enabled=$false;$browseTemplate.Enabled=$false;$appearanceButton.Enabled=$false;$fbxSettingsButton.Enabled=$false
 function BodyOptions {
     $shapes=@{}
     foreach($key in $script:bodyShapes.Keys){$shapes[$key]=[double]$script:bodyShapes[$key].Value}
-    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;match_source_proportions=$matchSource.Checked;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text;fbx_texture=$fbxTexture.Text;fbx_author=$fbxAuthor.Text;fbx_license_url=$fbxLicense.Text}
+    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;head_scale=[double]$bodyWidth.Value;shape=$shapes;match_source_proportions=$matchSource.Checked;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text;fbx_texture=$fbxTexture.Text;fbx_author=$fbxAuthor.Text;fbx_license_url=$fbxLicense.Text}
 }
 $script:springControls=@{}
 $names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸'}
@@ -266,7 +272,7 @@ $runButton=Button '変換開始' 15 672 {
         if(-not(Test-Path -LiteralPath $blender.Text -PathType Leaf)){throw 'Blender.exeを指定してください。'}
         if([System.IO.Path]::GetFileName($blender.Text) -ne 'blender.exe'){throw 'blender.exeを選んでください。'}
         if(-not(Test-Path -LiteralPath $inputFile.Text -PathType Leaf)){throw 'PMXまたはZIPを指定してください。'}
-        if($mode.SelectedIndex -eq 1 -and -not(Test-Path -LiteralPath $bodyTemplate.Text -PathType Leaf)){throw '補完素体のVRM / FBX / ZIPを選んでください。'}
+        if($mode.SelectedIndex -gt 0 -and -not(Test-Path -LiteralPath $bodyTemplate.Text -PathType Leaf)){throw '補完素体のVRM / FBX / ZIPを選んでください。'}
         if(-not $author.Text.Trim()){throw '元モデルの作者名を入力してください。'}
         if(-not $outputFile.Text.Trim()){throw '保存先を指定してください。'}
         $out=[System.IO.Path]::GetFullPath($outputFile.Text)
@@ -278,7 +284,7 @@ $runButton=Button '変換開始' 15 672 {
         $script:job=Join-Path (Join-Path $root 'logs') ([DateTime]::Now.ToString('yyyyMMdd-HHmmss')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,6))
         New-Item -ItemType Directory -Path $script:job -Force|Out-Null
         $cfg=@{input=$inputFile.Text;output=$out;work=$script:job;log=(Join-Path $script:job 'conversion.log');title=$title.Text;author=$author.Text;license_url=$license.Text;spring_options=(SpringOptions);body_template=$bodyTemplate.Text;body_options=(BodyOptions)}
-        $cfg.conversion_mode=if($mode.SelectedIndex -eq 1){'body_only'}else{'normal'}
+        $cfg.conversion_mode=if($mode.SelectedIndex -eq 2){'head_to_template'}elseif($mode.SelectedIndex -eq 1){'body_only'}else{'normal'}
         $cfgPath=Join-Path $script:job 'config.json'
         [System.IO.File]::WriteAllText($cfgPath,($cfg|ConvertTo-Json -Depth 8),[System.Text.UTF8Encoding]::new($false))
         [System.IO.File]::WriteAllText($settings,(@{blender=$blender.Text;author=$author.Text;license_url=$license.Text;spring_options=(SpringOptions);body_template=$bodyTemplate.Text;body_options=(BodyOptions)}|ConvertTo-Json -Depth 8),[System.Text.UTF8Encoding]::new($false))

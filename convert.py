@@ -6,6 +6,7 @@ from vrm_core import read_glb, write_glb, package_vrm
 from bone_mapping import map_bones, validate_fingers
 from spring_bones import setup_springs
 from body_template import replace_body, active_joints
+from head_transplant import transplant_head
 from blender_image_io import BlenderImages
 from neck_stitch import stitch_neck
 from template_source import prepare_template
@@ -93,8 +94,8 @@ def run():
     log('Blender '+bpy.app.version_string)
     log('1/6 入力ファイルを確認しています')
     mode=config.get('conversion_mode','normal')
-    if mode not in ('normal','body_only'):raise ValueError('不明な変換モードです。')
-    if mode=='body_only':
+    if mode not in ('normal','body_only','head_to_template'):raise ValueError('不明な変換モードです。')
+    if mode in ('body_only','head_to_template'):
         template=Path(config.get('body_template',''))
         if not template.is_file() or template.suffix.lower() not in ('.vrm','.fbx','.zip'):raise ValueError('補完素体のVRM / FBX / ZIPを指定してください。')
     model=input_model()
@@ -219,11 +220,12 @@ def run():
     bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     chunks=normalize(document,chunks,mapped,log)
     body_report=None;body_materials={};weighted_joints=None
-    if mode=='body_only':
+    if mode in ('body_only','head_to_template'):
         log('補完VRMの体を組み合わせています')
         images=BlenderImages(config['work'])
         template,template_source_report=prepare_template(template,config['work'],config.get('body_options'),log)
-        chunks,body_report,body_materials=replace_body(document,chunks,mapped,template,config.get('body_options'),log,images.decode,images.encode)
+        assemble=transplant_head if mode=='head_to_template' else replace_body
+        chunks,body_report,body_materials=assemble(document,chunks,mapped,template,config.get('body_options'),log,images.decode,images.encode)
         body_report['templateSourceReport']=template_source_report
         body_report['warnings'].extend(template_source_report['warnings'])
         body_options=config.get('body_options') or {}
