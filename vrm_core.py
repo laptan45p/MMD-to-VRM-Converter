@@ -114,7 +114,7 @@ def package_vrm(document, bone_names, title, author, license_url):
           'tagMap':{'RenderType':{'OPAQUE':'Opaque','MASK':'TransparentCutout','BLEND':'Transparent'}[mode]}})
     curve={'curve':[0,0,0,1,1,1,1,0], 'xRange':90, 'yRange':10}
     document.setdefault('extensions',{})['VRM']={
-        'exporterVersion':'MMD VRM Tool 0.7.0','specVersion':'0.0',
+        'exporterVersion':'MMD VRM Tool 0.7.1','specVersion':'0.0',
         'meta':{'title':title,'version':'1.0','author':author,'contactInformation':'',
           'reference':'','allowedUserName':'OnlyAuthor','violentUssageName':'Disallow',
           'sexualUssageName':'Disallow','commercialUssageName':'Disallow',

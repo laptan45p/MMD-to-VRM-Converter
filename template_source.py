@@ -68,6 +68,18 @@ def find_body_mesh(meshes,name=''):
     if len(matches)!=1:raise ValueError('FBXの体メッシュを特定できません。体メッシュ名を指定してください。候補: '+', '.join(m.name for m in meshes))
     return matches[0]
 
+def fbx_export_options(properties,path):
+    settings={'filepath':str(path),'export_format':'GLB','use_selection':True,'export_animations':False,
+        'export_morph':False,'export_skins':True,'export_extras':True,'export_yup':True,
+        'export_def_bones':False,'export_rest_position_armature':True,'export_materials':'EXPORT'}
+    image_property=properties.get('export_image_format')
+    if image_property is not None:
+        allowed={item.identifier for item in image_property.enum_items}
+        selected=next((value for value in ('AUTO','PNG') if value in allowed),None)
+        if selected is None:raise RuntimeError('このglTFエクスポーターには対応する画像形式（AUTO / PNG）がありません。')
+        settings['export_image_format']=selected
+    return {k:v for k,v in settings.items() if k in properties}
+
 def prepare_template(path,work,options=None,log=print):
     """Called only after source geometry has been exported and loaded into memory."""
     options=options or {};path,texture,report=resolve_template(path,work,options)
@@ -111,14 +123,9 @@ def prepare_template(path,work,options=None,log=print):
     if missing:raise ValueError('補完FBXのボーン名を対応付けできません: '+', '.join(missing))
     bpy.ops.object.select_all(action='DESELECT');arm.select_set(True);mesh.select_set(True);bpy.context.view_layer.objects.active=arm
     intermediate=Path(work)/'template-fbx.glb'
-    props=bpy.ops.export_scene.gltf.get_rna_type().properties.keys()
-    settings={'filepath':str(intermediate),'export_format':'GLB','use_selection':True,'export_animations':False,
-        'export_morph':False,'export_skins':True,'export_extras':True,'export_yup':True,'export_image_format':'PNG',
-        'export_def_bones':False,'export_rest_position_armature':True,'export_materials':'EXPORT'}
-    if 'FINISHED' not in bpy.ops.export_scene.gltf(**{k:v for k,v in settings.items() if k in props}):raise RuntimeError('補完FBXの中間出力に失敗しました。')
+    props=bpy.ops.export_scene.gltf.get_rna_type().properties
+    if 'FINISHED' not in bpy.ops.export_scene.gltf(**fbx_export_options(props,intermediate)):raise RuntimeError('補完FBXの中間出力に失敗しました。')
     doc,chunks=read_glb(intermediate);nodes={n.get('name'):i for i,n in enumerate(doc['nodes'])};mapping={role:nodes[name] for role,name in names.items() if name in nodes}
-    for node in doc['nodes']:
-        if 'mesh' in node:doc['meshes'][node['mesh']]['name']=mesh.name
     for node in doc['nodes']:
         if 'mesh' in node:doc['meshes'][node['mesh']]['name']=mesh.name
     fingers=validate_fingers(doc,mapping);chunks=normalize(doc,chunks,mapping,log)

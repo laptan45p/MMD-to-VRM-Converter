@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.7.0'
+$form.Text = 'MMD -> VRM 0.x / 0.7.1'
 $form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
@@ -121,31 +121,11 @@ $fbxHint.Location=New-Object System.Drawing.Point(15,145);$fbxHint.Size=New-Obje
 $fbxClose=New-Object System.Windows.Forms.Button
 $fbxClose.Text='閉じる';$fbxClose.Location=New-Object System.Drawing.Point(480,220);$fbxClose.Size=New-Object System.Drawing.Size(110,30);$fbxClose.Add_Click({$fbxSettings.Hide()});$fbxSettings.Controls.Add($fbxClose)
 $fbxSettingsButton=Button 'FBX設定' 610 258 {[void]$fbxSettings.ShowDialog($form)}
-$fbxSettings=New-Object System.Windows.Forms.Form
-$fbxSettings.Text='FBX補完素体の設定';$fbxSettings.Size=New-Object System.Drawing.Size(640,300);$fbxSettings.StartPosition='CenterParent'
-$fbxSettings.FormBorderStyle='FixedDialog';$fbxSettings.MaximizeBox=$false;$fbxSettings.MinimizeBox=$false;$fbxSettings.ShowInTaskbar=$false;$fbxSettings.Font=$form.Font
-function FbxField($label,$y){
-    $l=New-Object System.Windows.Forms.Label;$l.Text=$label;$l.Location=New-Object System.Drawing.Point(15,$y);$l.Size=New-Object System.Drawing.Size(165,26);$fbxSettings.Controls.Add($l)
-    $t=New-Object System.Windows.Forms.TextBox;$t.Location=New-Object System.Drawing.Point(185,$y);$t.Size=New-Object System.Drawing.Size(400,26);$fbxSettings.Controls.Add($t);return $t
-}
-$fbxTexture=FbxField '肌テクスチャ (任意)' 20
-$fbxTexture.Size=New-Object System.Drawing.Size(300,26)
-$fbxAuthor=FbxField '補完素材の作者' 60
-$fbxLicense=FbxField '利用条件URL' 100
-$fbxBrowse=New-Object System.Windows.Forms.Button
-$fbxBrowse.Text='選択';$fbxBrowse.Location=New-Object System.Drawing.Point(500,18);$fbxBrowse.Size=New-Object System.Drawing.Size(85,29)
-$fbxBrowse.Add_Click({$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='肌テクスチャ|*.png;*.jpg;*.jpeg;*.tga;*.bmp';if($d.ShowDialog() -eq 'OK'){$fbxTexture.Text=$d.FileName}});$fbxSettings.Controls.Add($fbxBrowse)
-$fbxHint=New-Object System.Windows.Forms.Label
-$fbxHint.Text='肌テクスチャが空欄なら同梱のBaseBody/Skin1を優先します。別の色はZIPを展開して画像を選んでください。VRM入力には、この画面の設定は適用しません。'
-$fbxHint.Location=New-Object System.Drawing.Point(15,145);$fbxHint.Size=New-Object System.Drawing.Size(570,65);$fbxSettings.Controls.Add($fbxHint)
-$fbxClose=New-Object System.Windows.Forms.Button
-$fbxClose.Text='閉じる';$fbxClose.Location=New-Object System.Drawing.Point(480,220);$fbxClose.Size=New-Object System.Drawing.Size(110,30);$fbxClose.Add_Click({$fbxSettings.Hide()});$fbxSettings.Controls.Add($fbxClose)
-$fbxSettingsButton=Button 'FBX設定' 610 258 {[void]$fbxSettings.ShowDialog($form)}
 $mode.Add_SelectedIndexChanged({
     $on=($mode.SelectedIndex -eq 1)
-    $bodyTemplate.Enabled=$on;$bodyMesh.Enabled=$on;$neckOffset.Enabled=$on;$bodyWidth.Enabled=$on;$browseTemplate.Enabled=$on;$appearanceButton.Enabled=$on;$fbxSettingsButton.Enabled=$on;$fbxSettingsButton.Enabled=$on
+    $bodyTemplate.Enabled=$on;$bodyMesh.Enabled=$on;$neckOffset.Enabled=$on;$bodyWidth.Enabled=$on;$browseTemplate.Enabled=$on;$appearanceButton.Enabled=$on;$fbxSettingsButton.Enabled=$on
 })
-$bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false;$bodyWidth.Enabled=$false;$browseTemplate.Enabled=$false;$appearanceButton.Enabled=$false;$fbxSettingsButton.Enabled=$false;$fbxSettingsButton.Enabled=$false
+$bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false;$bodyWidth.Enabled=$false;$browseTemplate.Enabled=$false;$appearanceButton.Enabled=$false;$fbxSettingsButton.Enabled=$false
 function BodyOptions {
     $shapes=@{}
     foreach($key in $script:bodyShapes.Keys){$shapes[$key]=[double]$script:bodyShapes[$key].Value}
@@ -215,7 +195,6 @@ if(Test-Path $settings){
         if($s.body_template){$bodyTemplate.Text=$s.body_template}
         if($s.body_options){
             $bodyMesh.Text=$s.body_options.mesh_name
-            $fbxTexture.Text=$s.body_options.fbx_texture;$fbxAuthor.Text=$s.body_options.fbx_author;$fbxLicense.Text=$s.body_options.fbx_license_url
             $fbxTexture.Text=$s.body_options.fbx_texture;$fbxAuthor.Text=$s.body_options.fbx_author;$fbxLicense.Text=$s.body_options.fbx_license_url
             if($s.body_options.shape){
                 foreach($key in $script:bodyShapes.Keys){

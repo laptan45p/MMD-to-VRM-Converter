@@ -2,7 +2,8 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from template_source import resolve_template
+from template_source import resolve_template, fbx_export_options
+from types import SimpleNamespace
 from bone_mapping import map_bones
 from vrm_core import MAP
 
@@ -46,3 +47,19 @@ class TemplateSourceTest(unittest.TestCase):
             aliases[name]=role
         mapping,warnings=map_bones(aliases)
         self.assertEqual(set(mapping),set(MAP));self.assertFalse(warnings)
+
+class ExportFormatCompatibilityTest(unittest.TestCase):
+    def properties(self,identifiers):
+        return {'filepath':None,'export_format':None,'use_selection':None,
+            'export_image_format':SimpleNamespace(enum_items=[SimpleNamespace(identifier=v) for v in identifiers])}
+    def test_reported_blender_enum_uses_auto(self):
+        properties=self.properties(('AUTO','JPEG','WEBP','NONE'))
+        options=fbx_export_options(properties,Path('body.glb'))
+        self.assertEqual(options['export_image_format'],'AUTO')
+        self.assertEqual(options['export_format'],'GLB')
+        self.assertTrue(set(options).issubset(properties))
+    def test_older_png_enum_is_supported(self):
+        self.assertEqual(fbx_export_options(self.properties(('PNG','JPEG')),Path('body.glb'))['export_image_format'],'PNG')
+    def test_missing_supported_image_format_is_reported(self):
+        with self.assertRaisesRegex(RuntimeError,'画像形式'):
+            fbx_export_options(self.properties(('JPEG','NONE')),Path('body.glb'))
