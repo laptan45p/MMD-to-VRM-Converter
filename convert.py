@@ -6,6 +6,7 @@ from vrm_core import read_glb, write_glb, package_vrm
 from bone_mapping import map_bones, validate_fingers
 from spring_bones import setup_springs
 from body_template import replace_body, active_joints
+from blender_image_io import BlenderImages
 from normalize import normalize
 from texture_paths import texture_path
 
@@ -218,7 +219,13 @@ def run():
     body_report=None;body_materials={};weighted_joints=None
     if mode=='body_only':
         log('補完VRMの体を組み合わせています')
-        chunks,body_report,body_materials=replace_body(document,chunks,mapped,template,config.get('body_options'),log)
+        images=BlenderImages(config['work'])
+        chunks,body_report,body_materials=replace_body(document,chunks,mapped,template,config.get('body_options'),log,images.decode,images.encode)
+        match=body_report['skinMatching']
+        log('肌色補正: '+match['status']+' / 元材質: '+str(match.get('sourceMaterial','未検出'))+' / 補完材質: '+str(match.get('templateMaterial','未検出')))
+        if match['status'] in ('not_detected','sample_failed'):
+            log('元MMDの材質候補: '+', '.join(match['sourceCandidates']))
+            log('補完素体の材質候補: '+', '.join(match['templateCandidates']))
         weighted_joints=active_joints(document,chunks)
         finger_report=validate_fingers(document,mapped)
         bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
