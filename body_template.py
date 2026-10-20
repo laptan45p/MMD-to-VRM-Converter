@@ -9,6 +9,7 @@ import re
 import numpy as np
 from normalize import normalize, world_matrices
 from vrm_core import read_glb, REQUIRED
+from body_fit import torso_landmarks, neutral_body_material
 from body_appearance import (shape_settings, reshape, normals, skin_plan, image_bytes,
     pillow_decode, pillow_encode, tint_pixels)
 
@@ -133,10 +134,8 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
     src=Buffer(doc,chunks);dst=Buffer(donor,dc)
     sw,sp=world_matrices(doc);dw,dp=world_matrices(donor)
     spos=np.array([m[:3,3] for m in sw]);dpos=np.array([m[:3,3] for m in dw])
-    height=float(spos[bones['neck'],1]-spos[bones['hips'],1]);dh=float(dpos[db['neck'],1]-dpos[db['hips'],1])
-    if height<.03 or dh<.03: raise ValueError('腰から首の高さが不正です。')
-    scale=height/dh
-    if not .1<scale<10: raise ValueError('元モデルと補完素体の大きさが大幅に異なります。')
+    fit_positions,scale,torso_fit=torso_landmarks(spos,dpos,bones,db)
+    if torso_fit['adjusted']:log('腰・背骨の制御ボーン位置を検出したため、胴体は首と脚の付け根から合わせます。')
     # Segment transforms match named joints; transverse scale preserves donor shape.
     targets={j:bones[r] for r,j in db.items() if r in bones}
     matrices={}
@@ -149,13 +148,13 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
         elif len(ends)!=1: ends=[]
         linear=np.eye(3)*scale;axis=np.array([0.,1,0])
         if ends:
-            end=ends[0];a=dpos[end]-dpos[j];b=spos[targets[end]]-spos[target]
+            end=ends[0];a=dpos[end]-dpos[j];b=fit_positions[targets[end]]-fit_positions[target]
             if min(np.linalg.norm(a),np.linalg.norm(b))>1e-6:
                 unit=a/np.linalg.norm(a);axis=unit;ratio=np.linalg.norm(b)/np.linalg.norm(a)
                 linear=rotation_between(a,b)@(np.eye(3)*scale+(ratio-scale)*np.outer(unit,unit))
         # Width/depth adjustment keeps target bone anchors fixed.
         linear=linear@(np.eye(3)*width+(1-width)*np.outer(axis,axis))
-        m=np.eye(4);m[:3,:3]=linear;m[:3,3]=spos[target]-linear@dpos[j];matrices[j]=m
+        m=np.eye(4);m[:3,:3]=linear;m[:3,3]=fit_positions[target]-linear@dpos[j];matrices[j]=m
     def anchor(j):
         seen=set()
         while j not in matrices:
@@ -204,7 +203,7 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
         if role not in bones and j in joint_map and (role.endswith(('Proximal','Intermediate','Distal','Toes'))): bones[role]=joint_map[j]
     plans,skin_report=skin_plan(doc,src,donor,dst,{p.get('material') for p in used_primitives if 'material' in p},options,image_decode)
     role_lookup={node:role for role,node in db.items()}
-    body_positions={role:spos[node] for role,node in bones.items() if node<len(spos)}
+    body_positions={role:fit_positions[node] for role,node in bones.items() if node<len(fit_positions)}
     def node_regions(j):
         current=j;breast=False
         while current not in role_lookup:
@@ -291,6 +290,8 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
             elif isinstance(value,list):
                 for child in value:remap(child)
         remap(mat)
+        mat['emissiveFactor']=[0,0,0];mat.pop('emissiveTexture',None)
+        mat.setdefault('pbrMetallicRoughness',{}).update(metallicFactor=0,roughnessFactor=1)
         if index in plans:
             pbr=mat.setdefault('pbrMetallicRoughness',{});factor=list(pbr.get('baseColorFactor',[1,1,1,1]))
             factor[:3]=[1,1,1] if 'baseColorTexture' in pbr else np.clip(plans[index]['factor']*plans[index]['ratio'],0,1).tolist()
@@ -306,7 +307,7 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
                     shade=list(vectors['_ShadeColor'])
                     gain=1/np.maximum(plans[index]['factor'],1e-6) if prop.get('textureProperties',{}).get('_ShadeTexture',-1)>=0 else plans[index]['ratio']
                     shade[:3]=np.clip(np.array(shade[:3])*gain,0,1).tolist();vectors['_ShadeColor']=shade
-            material_properties[out]=prop
+            material_properties[out]=neutral_body_material(prop)
         return out
     ordered=sorted(used_donor_joints);unique=[]
     for j in ordered:
@@ -358,7 +359,7 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
             if extension != 'VRM' and extension not in doc.setdefault(key,[]):doc[key].append(extension)
     metadata=copy.deepcopy(vrm.get('meta',{}))
     report={'mode':'body_only','bodyMesh':donor['meshes'][selected].get('name'),'neckCutY':cut,
-        'width':width,'scale':scale,'shape':shapes,'skinMatching':skin_report,'keptHeadTriangles':kept,'removedSourceTriangles':removed,
+        'width':width,'scale':scale,'torsoFit':torso_fit,'shape':shapes,'skinMatching':skin_report,'keptHeadTriangles':kept,'removedSourceTriangles':removed,
         'bodyTriangles':sum(len(triangles(dst,p)) for p in used_primitives),
         'mappedJoints':len(unique),'addedJoints':len(new_positions),'templateMetadata':metadata,
         'warnings':skin_report['warnings']+['素体合成は実験機能です。首の接合状態と、肌色・つなぎ目・体形を確認してください。',

@@ -72,6 +72,25 @@ class BodyTemplateTest(unittest.TestCase):
         r=setup_springs(d,active_joints=active_joints(d,c))
         roots=[x for x in r['groups'] if x['category']=='chest']
         self.assertEqual(len(roots),1);self.assertTrue(d['nodes'][roots[0]['node']].get('children'))
+    def test_coincident_controls_keep_source_skeleton_and_valid_bind(self):
+        d,c,b=fixture()
+        world,_=world_matrices(d)
+        positions=np.array([m[:3,3] for m in world])
+        positions[b['hips']]=[0,1,0];positions[b['spine']]=[0,1,0]
+        _,parents=world_matrices(d)
+        for i,node in enumerate(d['nodes']):
+            node['translation']=(positions[i]-(positions[parents[i]] if i in parents else 0)).tolist()
+        c=normalize(d,c,b,lambda _:None)
+        before,_=world_matrices(d);count=len(d['nodes'])
+        c,report,_=replace_body(d,c,b,self.path,log=lambda _:None)
+        after,_=world_matrices(d)
+        self.assertTrue(report['torsoFit']['adjusted'])
+        np.testing.assert_allclose(after[:count],before)
+        buf=Buffer(d,c);skin=d['skins'][-1]
+        inverse=buf.read(skin['inverseBindMatrices']).reshape(-1,4,4).transpose(0,2,1)
+        for joint,bind in zip(skin['joints'],inverse):
+            np.testing.assert_allclose(after[joint]@bind,np.eye(4),atol=1e-6)
+
     def test_material_texture_remapping(self):
         d=self.donor;buf=Buffer(d,self.dc)
         d['images']=[{'bufferView':buf.view(b'image bytes'),'mimeType':'image/png'}];d['textures']=[{'source':0}]
