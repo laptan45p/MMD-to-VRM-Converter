@@ -33,7 +33,15 @@ def default_options():
                             'gravity': gravity, 'radius': radius}
     return result
 
-def setup_springs(document, original_names=None, options=None):
+def descendants_set(nodes, root):
+    result=set();pending=[root]
+    while pending:
+        i=pending.pop()
+        if i in result:continue
+        result.add(i);pending.extend(nodes[i].get('children',[]))
+    return result
+
+def setup_springs(document, original_names=None, options=None, active_joints=None):
     defaults = default_options(); supplied = options or {}
     settings = {'colliders': bool(supplied.get('colliders', True))}
     for category in CATEGORIES:
@@ -58,7 +66,7 @@ def setup_springs(document, original_names=None, options=None):
     for i in sorted(joints):
         name = names.get(nodes[i].get('name'), nodes[i].get('name', ''))
         category = classify(name)
-        if i not in protected and category:
+        if i not in protected and category and (active_joints is None or descendants_set(nodes,i).intersection(active_joints)):
             candidates[i] = category
     # If a candidate is off, its descendants must not leak into another category.
     roots = []

@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vrm_core import read_glb, write_glb, package_vrm
 from bone_mapping import map_bones, validate_fingers
 from spring_bones import setup_springs
+from body_template import replace_body, active_joints
 from normalize import normalize
 from texture_paths import texture_path
 
@@ -88,6 +89,11 @@ def run():
     import bpy, addon_utils
     log('Blender '+bpy.app.version_string)
     log('1/6 入力ファイルを確認しています')
+    mode=config.get('conversion_mode','normal')
+    if mode not in ('normal','body_only'):raise ValueError('不明な変換モードです。')
+    if mode=='body_only':
+        template=Path(config.get('body_template',''))
+        if not template.is_file() or template.suffix.lower()!='.vrm':raise ValueError('補完用VRMを指定してください。')
     model=input_model()
     title,textures,pmx_materials,vertices,triangles=material_data(model)
     log(f'頂点 {vertices:,} / 三角形 {triangles:,} / 材質 {len(pmx_materials)}')
@@ -209,10 +215,29 @@ def run():
     finger_report=validate_fingers(document,mapped)
     bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     chunks=normalize(document,chunks,mapped,log)
+    body_report=None;body_materials={};weighted_joints=None
+    if mode=='body_only':
+        log('補完VRMの体を組み合わせています')
+        chunks,body_report,body_materials=replace_body(document,chunks,mapped,template,config.get('body_options'),log)
+        weighted_joints=active_joints(document,chunks)
+        finger_report=validate_fingers(document,mapped)
+        bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     report=package_vrm(document,bone_names,config.get('title') or title,
                        config['author'],config.get('license_url',''))
-    spring_report=setup_springs(document,original_names,config.get('spring_options'))
-    report.update({'fingerReport':finger_report,'springBoneReport':spring_report,
+    if body_report:
+        for index,properties in body_materials.items():
+            document['extensions']['VRM']['materialProperties'][index]=properties
+        meta=document['extensions']['VRM']['meta'];donor_meta=body_report['templateMetadata']
+        reference='Body template: '+donor_meta.get('title','')+' / Author: '+donor_meta.get('author','')+' / License: '+donor_meta.get('otherLicenseUrl','')
+        meta['reference']=reference
+        if donor_meta.get('author') and donor_meta['author']!=meta['author']:meta['author']+=' / '+donor_meta['author']
+        for key in ('allowedUserName','violentUssageName','sexualUssageName','commercialUssageName'):
+            value=donor_meta.get(key)
+            if key=='allowedUserName' and value in ('OnlyAuthor','ExplicitlyLicensedPerson'):meta[key]='OnlyAuthor'
+            elif key!='allowedUserName' and value=='Disallow':meta[key]='Disallow'
+        warnings.extend(body_report['warnings'])
+    spring_report=setup_springs(document,original_names,config.get('spring_options'),active_joints=weighted_joints)
+    report.update({'conversionMode':mode,'bodyTemplateReport':body_report,'fingerReport':finger_report,'springBoneReport':spring_report,
                    'springBones':bool(spring_report['groups']),'blender':bpy.app.version_string,'source':str(model),
                    'normalized':True,'tposeBaked':True,
                    'vertices':vertices,'triangles':triangles,'warnings':warnings+finger_report['warnings']+spring_report['warnings']+[
