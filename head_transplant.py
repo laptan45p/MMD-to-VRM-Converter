@@ -4,6 +4,7 @@ import math
 import numpy as np
 from body_template import Buffer, BIN, descendants, influences, triangles, select_body
 from body_fit import neutral_body_material
+from head_selection import hair_materials,hair_joints,retained_head_nodes,head_faces
 from normalize import normalize, world_matrices
 from vrm_core import read_glb, REQUIRED
 
@@ -50,7 +51,8 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
     donor['meshes']=[{'name':'TemplateBody','primitives':body_primitives}]
     # Clear stale donor head expressions; package_vrm regenerates them from MMD.
     donor.setdefault('extensions',{}).pop('VRM',None)
-    source_head=descendants(document['nodes'],bones['head'])
+    hair_material_indexes=hair_materials(document)
+    source_head=retained_head_nodes(document['nodes'],sp,bones,hair_joints(document,src,hair_material_indexes))
     node_map={bones['head']:db['head'],bones['neck']:db['neck']}
     source_positions={i:scale*m[:3,3]+translation for i,m in enumerate(sw)}
     names={n.get('name') for n in donor['nodes']}
@@ -100,24 +102,27 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
             elif isinstance(item,list):
                 for child in item:remap(child)
         remap(value);out=len(donor.setdefault('materials',[]));donor['materials'].append(value);material_map[index]=out;return out
-    kept=removed=0;imported=0;fallback=set()
+    kept=removed=0;imported=0;fallback=set();hair_faces_kept=0
     for mi,mesh in enumerate(document['meshes']):
         instances_s=[n for n in document['nodes'] if n.get('mesh')==mi]
         if not instances_s:continue
         if len(instances_s)!=1 or 'skin' not in instances_s[0]:raise ValueError('頭部移植は独立したスキン付きメッシュのみ対応します。')
         skin=document['skins'][instances_s[0]['skin']];primitives=[];new_joints=[]
-        def map_joint(old):
+        def map_joint(old,is_hair=False):
+            if is_hair and old not in source_head:return db['head']
             if old in node_map:return node_map[old]
             fallback.add(old);return db['neck']
-        def joint_index(old):
-            new=map_joint(old)
+        def joint_index(old,is_hair=False):
+            new=map_joint(old,is_hair)
             if new not in new_joints:new_joints.append(new)
             return new_joints.index(new)
         for primitive in mesh['primitives']:
             tri=triangles(src,primitive);attr=primitive['attributes'];pos=src.read(attr['POSITION'])
             js,ws=influences(src,primitive,skin);joints=np.array(skin['joints'])[js]
             hw=np.sum(ws*np.isin(joints,list(source_head)),axis=1);nw=np.sum(ws*(joints==bones['neck']),axis=1)
-            mask=np.all(((hw>=.5)|((hw+nw>=.5)&(pos[:,1]>=source_cut)))[tri],axis=1)
+            is_hair=primitive.get('material') in hair_material_indexes
+            mask=head_faces(tri,pos,hw,nw,source_cut,is_hair)
+            if is_hair:hair_faces_kept+=int(mask.sum())
             kept+=int(mask.sum());removed+=int((~mask).sum())
             if not mask.any():continue
             if primitive.get('extensions'):raise ValueError('頭部の圧縮・拡張付きメッシュは未対応です。')
@@ -135,7 +140,7 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
             mapped=np.zeros_like(js[used]);weights=ws[used].copy()
             for row in range(len(used)):
                 for col in range(mapped.shape[1]):
-                    if weights[row,col]>1e-6:mapped[row,col]=joint_index(int(joints[used[row],col]))
+                    if weights[row,col]>1e-6:mapped[row,col]=joint_index(int(joints[used[row],col]),is_hair)
                     else:weights[row,col]=0
             weights/=weights.sum(axis=1)[:,None]
             for suffix,start in (('0',0),('1',4)):
@@ -163,7 +168,8 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
         '素体の体型補正と肌色補正は適用しません。首接合が有効な場合は首付近のみ調整します。']
     if fallback:warnings.append('頭の境界に含まれる体側ボーンの少量のウェイトを、素体の首へまとめました。')
     report={'mode':'head_to_template','assemblyBasis':'template','neckCutY':cut,'headScale':scale,'headScaleMultiplier':multiplier,
-        'headTranslation':translation.tolist(),'keptHeadTriangles':kept,'removedSourceTriangles':removed,'headMeshes':imported,
+        'headTranslation':translation.tolist(),'keptHeadTriangles':kept,'removedSourceTriangles':removed,'headMeshes':imported,'retainedHairTriangles':hair_faces_kept,
+        'retainedHairMaterials':[document['materials'][i].get('name',str(i)) for i in sorted(hair_material_indexes)],
         'bodyTriangles':sum(len(triangles(dst,p)) for p in body_primitives),'templateMetadata':copy.deepcopy(vrm.get('meta',{})),
         'skinMatching':{'enabled':False,'status':'disabled','warnings':[]},'warnings':warnings}
     document.clear();document.update(donor);bones.clear();bones.update(result_bones)

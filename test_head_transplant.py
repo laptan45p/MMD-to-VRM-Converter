@@ -81,3 +81,18 @@ class HeadTransplantTest(unittest.TestCase):
         for index,expected in ((bt,b'donor pixels'),(ht,b'head pixels')):
             image=d['images'][d['textures'][index]['source']];view=d['bufferViews'][image['bufferView']];start=view['byteOffset']
             self.assertEqual(bytes(out.data[start:start+view['byteLength']]),expected)
+    def test_long_hair_with_body_control_weights_remains_and_follows_head(self):
+        d,c,b=self.source();buf=Buffer(d,c)
+        d['materials'].append({'name':'back_hair'})
+        primitive={'attributes':{'POSITION':buf.add([[0,1.9,0],[.05,1.1,0],[-.05,1.1,0]],'VEC3'),
+            'NORMAL':buf.add([[0,0,-1]]*3,'VEC3'),
+            'JOINTS_0':buf.add([[b['chest'],0,0,0]]*3,'VEC4',5123),
+            'WEIGHTS_0':buf.add([[1,0,0,0]]*3,'VEC4')},'indices':buf.add([0,1,2],'SCALAR',5123),'material':2}
+        d['meshes'][0]['primitives'].append(primitive)
+        c,r,_=transplant_head(d,buf.finish(),b,self.path,log=lambda _:None)
+        self.assertEqual(r['retainedHairTriangles'],1)
+        mesh=d['meshes'][1];hair=next(p for p in mesh['primitives'] if d['materials'][p['material']]['name']=='MMDHead_back_hair')
+        node=next(n for n in d['nodes'] if n.get('mesh')==1);skin=d['skins'][node['skin']];out=Buffer(d,c)
+        js=out.read(hair['attributes']['JOINTS_0']).astype(int);ws=out.read(hair['attributes']['WEIGHTS_0'])
+        self.assertEqual(set(np.array(skin['joints'])[js[ws>0]]),{b['head']})
+        np.testing.assert_allclose(out.read(hair['attributes']['POSITION'])[:,1],np.array([1.9,1.1,1.1])*r['headScale']+r['headTranslation'][1],atol=1e-6)

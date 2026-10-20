@@ -11,6 +11,7 @@ from normalize import normalize, world_matrices
 from vrm_core import read_glb, REQUIRED
 from body_fit import torso_landmarks, neutral_body_material
 import proportion_match as proportions
+from head_selection import hair_materials,hair_joints,retained_head_nodes,head_faces
 from body_appearance import (shape_settings, reshape, normals, skin_plan, image_bytes,
     pillow_decode, pillow_encode, tint_pixels)
 
@@ -291,7 +292,9 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
             parent=new_parents[node];base=new_positions[parent] if parent in new_positions else spos[parent]
             doc['nodes'][node]['translation']=(position-base).tolist()
     # Remove the source body and clothes by head ancestry; preserve long hair below neck.
-    head=descendants(doc['nodes'],bones['head']);neck=bones['neck'];cut=float(spos[neck,1]+offset)
+    hair_material_indexes=hair_materials(doc)
+    head=retained_head_nodes(doc['nodes'],sp,bones,hair_joints(doc,src,hair_material_indexes))
+    neck=bones['neck'];cut=float(spos[neck,1]+offset)
     kept=removed=0;mesh_remap={};new_meshes=[]
     for mi,mesh in enumerate(doc['meshes']):
         instances_s=[n for n in doc['nodes'] if n.get('mesh')==mi]
@@ -303,8 +306,7 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
             nodes=np.array(skin['joints'])[js]
             head_weights=np.sum(ws*np.isin(nodes,list(head)),axis=1)
             neck_weights=np.sum(ws*(nodes==neck),axis=1)
-            keep=(head_weights>=.5)|((head_weights+neck_weights>=.5)&(pos[:,1]>=cut))
-            mask=np.all(keep[tri],axis=1);kept+=int(mask.sum());removed+=int((~mask).sum())
+            mask=head_faces(tri,pos,head_weights,neck_weights,cut,p.get('material') in hair_material_indexes);kept+=int(mask.sum());removed+=int((~mask).sum())
             if mask.any():
                 out=copy.deepcopy(p);out['indices']=src.add(tri[mask].ravel(),'SCALAR',5125);primitives.append(out)
         if primitives:
