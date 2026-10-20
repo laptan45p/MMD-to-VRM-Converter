@@ -10,6 +10,7 @@ import numpy as np
 from normalize import normalize, world_matrices
 from vrm_core import read_glb, REQUIRED
 from body_fit import torso_landmarks, neutral_body_material
+import proportion_match as proportions
 from body_appearance import (shape_settings, reshape, normals, skin_plan, image_bytes,
     pillow_decode, pillow_encode, tint_pixels)
 
@@ -79,6 +80,22 @@ def influences(buf, primitive, skin):
     totals=ws.sum(axis=1)
     if np.any(totals<1e-8): raise ValueError('Unweighted vertices')
     return js,ws/totals[:,None]
+
+def source_skin_samples(doc, buf, bones, parents, supplied=''):
+    allowed=proportions.skin_materials(doc,supplied)
+    points=[];normal=[];weights={key:[] for key in ('torso',)+proportions.LIMBS}
+    for node in doc['nodes']:
+        if 'mesh' not in node or 'skin' not in node:continue
+        skin=doc['skins'][node['skin']]
+        for p in doc['meshes'][node['mesh']]['primitives']:
+            if p.get('material') not in allowed or 'NORMAL' not in p['attributes']:continue
+            used=np.unique(triangles(buf,p));js,ws=influences(buf,p,skin)
+            region=proportions.regions(np.array(skin['joints'])[js[used]],ws[used],doc['nodes'],parents,bones)
+            points.append(buf.read(p['attributes']['POSITION'])[used]);normal.append(buf.read(p['attributes']['NORMAL'])[used])
+            for key in weights:weights[key].append(region[key])
+    return (np.concatenate(points) if points else np.empty((0,3)),
+        np.concatenate(normal) if normal else np.empty((0,3)),
+        {key:np.concatenate(value) if value else np.empty(0) for key,value in weights.items()})
 
 def active_joints(doc, chunks):
     buf=Buffer(doc,chunks);active=set()
@@ -217,12 +234,57 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
             for part in ('UpperArm','UpperLeg'):region[side+part]=float(role==side+part)
         return region
     joint_regions=[node_regions(j) for j in dskin['joints']]
-    if shaped:
+    # Fit cross-sections before removing the original body. Only skin-tagged
+    # source surfaces are measurements; clothes never supply body thickness.
+    source_samples=source_skin_samples(doc,src,bones,sp,str(options.get('source_skin_material') or '').strip())
+    cached=[];sample_points=[];sample_normals=[];sample_regions={key:[] for key in ('torso',)+proportions.LIMBS}
+    transforms=np.array([matrices[anchor(j)] if j in used_donor_joints else np.eye(4) for j in dskin['joints']])
+    for primitive in used_primitives:
+        tri=triangles(dst,primitive);used,reindexed=np.unique(tri.ravel(),return_inverse=True)
+        js,ws=influences(dst,primitive,dskin);js=js[used];ws=ws[used]
+        blend=np.einsum('vjab,vj->vab',transforms[js],ws)
+        fitted=np.einsum('vab,vb->va',blend[:,:3,:3],dst.read(primitive['attributes']['POSITION'])[used])+blend[:,:3,3]
+        fallback=dst.read(primitive['attributes']['NORMAL'])[used] if 'NORMAL' in primitive['attributes'] else np.tile([0,0,1.],(len(used),1))
+        transformed=np.einsum('vab,vb->va',np.linalg.inv(blend[:,:3,:3]).transpose(0,2,1),fallback)
+        transformed/=np.maximum(np.linalg.norm(transformed,axis=1)[:,None],1e-12)
+        region=proportions.regions(np.array(dskin['joints'])[js],ws,donor['nodes'],dp,db)
+        cached.append((used,reindexed,js,ws,blend,fitted,region))
+        sample_points.append(fitted);sample_normals.append(transformed)
+        for key in sample_regions:sample_regions[key].append(region[key])
+    height_plan=None
+    if options.get('match_source_proportions',True):
+        predicted=[];desired=[]
+        for side in ('left','right'):
+            arm=db[side+'UpperArm'];parent=dp.get(arm)
+            while parent is not None and parent not in {db[r] for r in proportions.TORSO if r in db}:parent=dp.get(parent)
+            if parent is not None:
+                matrix=matrices[parent]
+                predicted.append(float((matrix[:3,:3]@dpos[arm]+matrix[:3,3])[1]))
+                desired.append(float(spos[bones[side+'UpperArm'],1]))
+        if predicted:
+            origin=float(np.mean(predicted));target=float(np.mean(desired))
+            hip_y=float(body_positions['hips'][1]);neck_y=float(body_positions['neck'][1])
+            if hip_y+.03<min(origin,target) and max(origin,target)<neck_y-.003:
+                height_plan={'from':[hip_y,origin,neck_y],'to':[hip_y,target,neck_y]}
+        if height_plan is not None:
+            sample_points=[proportions.shoulder_height(p,r,height_plan) for p,r in zip(sample_points,sample_regions['torso'])]
+    donor_samples=(np.concatenate(sample_points),np.concatenate(sample_normals),
+        {key:np.concatenate(value) for key,value in sample_regions.items()})
+    proportion_plan,proportion_report=proportions.build_plan(source_samples,donor_samples,body_positions,
+        {role:spos[node] for role,node in bones.items() if node<len(spos)},
+        {role:dpos[node] for role,node in db.items()},scale,options.get('match_source_proportions',True),width)
+    if proportion_plan is not None:
+        proportion_plan['height']=height_plan;proportion_report['shoulderHeight']=height_plan
+        log('元MMDの肩の高さ・骨格幅・肌の断面を基準に、胴体・腕・脚の太さを合わせています。')
+    if shaped or proportion_plan is not None:
         updated={}
         for donor_node,new_node in joint_map.items():
             if new_node not in new_positions:continue
             region={key:np.array([value]) for key,value in node_regions(donor_node).items()}
-            updated[new_node]=reshape(np.array([new_positions[new_node]]),body_positions,shapes,region)[0]
+            point=np.array([new_positions[new_node]])
+            pr=proportions.regions(np.array([[donor_node]]),np.ones((1,1)),donor['nodes'],dp,db)
+            point=proportions.apply_plan(point,pr,body_positions,proportion_plan)
+            updated[new_node]=reshape(point,body_positions,shapes,region)[0] if shaped else point[0]
         new_positions.update(updated)
         new_parents={child:i for i,n in enumerate(doc['nodes']) for child in n.get('children',[])}
         for node,position in new_positions.items():
@@ -318,26 +380,23 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
         pos=new_positions.get(n,spos[n] if n<len(spos) else None);m=np.eye(4);m[:3,3]=-pos;inverse.append(m.T.reshape(-1))
     skin_index=len(doc['skins']);doc['skins'].append({'joints':unique,'inverseBindMatrices':src.add(inverse,'MAT4')})
     body_primitives=[]
-    for p in used_primitives:
+    for p,cache in zip(used_primitives,cached):
         if p.get('extensions'):raise ValueError('圧縮・拡張付きの体メッシュは未対応です。')
-        tri=triangles(dst,p);used,reindexed=np.unique(tri.ravel(),return_inverse=True)
-        js,ws=influences(dst,p,dskin);js=js[used];ws=ws[used];dnodes=np.array(dskin['joints'])[js]
-        transforms=np.array([matrices[anchor(j)] if j in used_donor_joints else np.eye(4) for j in dskin['joints']])
-        blend=np.einsum('vjab,vj->vab',transforms[js],ws)
-        attr=p['attributes']
-        fitted=np.einsum('vab,vb->va',blend[:,:3,:3],dst.read(attr['POSITION'])[used])+blend[:,:3,3]
+        used,reindexed,js,ws,blend,fitted,proportion_regions=cache
+        dnodes=np.array(dskin['joints'])[js];attr=p['attributes']
+        fitted=proportions.apply_plan(fitted,proportion_regions,body_positions,proportion_plan)
         if shaped:
             regions={key:np.sum(ws*np.array([r[key] for r in joint_regions])[js],axis=1) for key in joint_regions[0]}
             fitted=reshape(fitted,body_positions,shapes,regions)
         out={'attributes':{},'indices':src.add(reindexed,'SCALAR',5125)}
         for semantic,index in attr.items():
-            if semantic.startswith(('JOINTS_','WEIGHTS_')) or (shaped and semantic=='TANGENT'):continue
+            if semantic.startswith(('JOINTS_','WEIGHTS_')) or ((shaped or proportion_plan is not None) and semantic=='TANGENT'):continue
             data=dst.read(index)[used]
             if semantic=='POSITION':data=fitted
             elif semantic in ('NORMAL','TANGENT'):
                 transform=np.linalg.inv(blend[:,:3,:3]).transpose(0,2,1) if semantic=='NORMAL' else blend[:,:3,:3]
                 xyz=np.einsum('vab,vb->va',transform,data[:,:3]);xyz/=np.maximum(np.linalg.norm(xyz,axis=1)[:,None],1e-12)
-                data[:,:3]=normals(fitted,reindexed,xyz) if shaped and semantic=='NORMAL' else xyz
+                data[:,:3]=normals(fitted,reindexed,xyz) if (shaped or proportion_plan is not None) and semantic=='NORMAL' else xyz
             # Expand normalized integer UV/color attributes to floating point.
             a=donor['accessors'][index];out['attributes'][semantic]=src.add(data,a['type'])
         ws=np.where(ws>1e-5,ws,0);ws/=ws.sum(axis=1)[:,None]
@@ -359,10 +418,10 @@ def replace_body(doc, chunks, bones, template_path, options=None, log=print, ima
             if extension != 'VRM' and extension not in doc.setdefault(key,[]):doc[key].append(extension)
     metadata=copy.deepcopy(vrm.get('meta',{}))
     report={'mode':'body_only','bodyMesh':donor['meshes'][selected].get('name'),'neckCutY':cut,
-        'width':width,'scale':scale,'torsoFit':torso_fit,'shape':shapes,'skinMatching':skin_report,'keptHeadTriangles':kept,'removedSourceTriangles':removed,
+        'width':width,'scale':scale,'torsoFit':torso_fit,'proportionMatching':proportion_report,'shape':shapes,'skinMatching':skin_report,'keptHeadTriangles':kept,'removedSourceTriangles':removed,
         'bodyTriangles':sum(len(triangles(dst,p)) for p in used_primitives),
         'mappedJoints':len(unique),'addedJoints':len(new_positions),'templateMetadata':metadata,
-        'warnings':skin_report['warnings']+['素体合成は実験機能です。首の接合状態と、肌色・つなぎ目・体形を確認してください。',
+        'warnings':skin_report['warnings']+proportion_report['warnings']+['素体合成は実験機能です。首の接合状態と、肌色・つなぎ目・体形を確認してください。',
                     '頭の保持はウェイトから推定します。頭に追従する衣装が残る場合があります。',
                     '補完素体の表情・体形モーフは移植しません。胸は元のウェイトとボーンを利用して揺れを再設定します。']}
     log('素体合成: 頭の面 '+str(kept)+' / 体の面 '+str(report['bodyTriangles']))

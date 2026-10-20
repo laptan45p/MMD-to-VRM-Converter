@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.7.2'
+$form.Text = 'MMD -> VRM 0.x / 0.8.0'
 $form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
@@ -57,7 +57,7 @@ $browseTemplate=Button '選択' 700 298 {
     if($d.ShowDialog() -eq 'OK'){$bodyTemplate.Text=$d.FileName}
 }
 $appearance=New-Object System.Windows.Forms.Form
-$appearance.Text='体型・肌色の調整（素体モード）';$appearance.Size=New-Object System.Drawing.Size(640,590)
+$appearance.Text='体型・肌色の調整（素体モード）';$appearance.Size=New-Object System.Drawing.Size(640,625)
 $appearance.StartPosition='CenterParent';$appearance.FormBorderStyle='FixedDialog';$appearance.MaximizeBox=$false;$appearance.MinimizeBox=$false;$appearance.ShowInTaskbar=$false
 $appearance.Font=$form.Font
 $script:bodyShapes=@{}
@@ -89,16 +89,19 @@ $templateSkin.Location=New-Object System.Drawing.Point(200,348);$templateSkin.Si
 $neckJoin=New-Object System.Windows.Forms.CheckBox
 $neckJoin.Text='首を自動接合する（輪状の境界を検出できた場合）';$neckJoin.Checked=$true
 $neckJoin.Location=New-Object System.Drawing.Point(15,390);$neckJoin.Size=New-Object System.Drawing.Size(580,26);$appearance.Controls.Add($neckJoin)
+$matchSource=New-Object System.Windows.Forms.CheckBox
+$matchSource.Text='元MMDの骨格・肌形状に体型を合わせる';$matchSource.Checked=$true
+$matchSource.Location=New-Object System.Drawing.Point(15,425);$matchSource.Size=New-Object System.Drawing.Size(580,26);$appearance.Controls.Add($matchSource)
 $appearanceHint=New-Object System.Windows.Forms.Label
-$appearanceHint.Text='材質名は空欄で自動判定。体型は基準の素体からの調整です。首の接合結果はログに表示します。変更後は再変換してください。'
-$appearanceHint.Location=New-Object System.Drawing.Point(15,425);$appearanceHint.Size=New-Object System.Drawing.Size(580,70);$appearance.Controls.Add($appearanceHint)
+$appearanceHint.Text='材質名は空欄で自動判定。倍率1.0は自動補正後の体型です。衣装の内側は骨格幅を基準に補正します。変更後は再変換してください。'
+$appearanceHint.Location=New-Object System.Drawing.Point(15,460);$appearanceHint.Size=New-Object System.Drawing.Size(580,70);$appearance.Controls.Add($appearanceHint)
 $skinMatch.Add_CheckedChanged({$skinStrength.Enabled=$skinMatch.Checked;$sourceSkin.Enabled=$skinMatch.Checked;$templateSkin.Enabled=$skinMatch.Checked})
 $resetAppearance=New-Object System.Windows.Forms.Button
-$resetAppearance.Text='初期値に戻す';$resetAppearance.Location=New-Object System.Drawing.Point(15,505);$resetAppearance.Size=New-Object System.Drawing.Size(140,30)
-$resetAppearance.Add_Click({foreach($control in $script:bodyShapes.Values){$control.Value=1};$skinMatch.Checked=$true;$skinStrength.Value=0.8;$sourceSkin.Text='';$templateSkin.Text='';$neckJoin.Checked=$true})
+$resetAppearance.Text='初期値に戻す';$resetAppearance.Location=New-Object System.Drawing.Point(15,540);$resetAppearance.Size=New-Object System.Drawing.Size(140,30)
+$resetAppearance.Add_Click({foreach($control in $script:bodyShapes.Values){$control.Value=1};$skinMatch.Checked=$true;$skinStrength.Value=0.8;$sourceSkin.Text='';$templateSkin.Text='';$neckJoin.Checked=$true;$matchSource.Checked=$true})
 $appearance.Controls.Add($resetAppearance)
 $closeAppearance=New-Object System.Windows.Forms.Button
-$closeAppearance.Text='閉じる';$closeAppearance.Location=New-Object System.Drawing.Point(480,505);$closeAppearance.Size=New-Object System.Drawing.Size(110,30)
+$closeAppearance.Text='閉じる';$closeAppearance.Location=New-Object System.Drawing.Point(480,540);$closeAppearance.Size=New-Object System.Drawing.Size(110,30)
 $closeAppearance.Add_Click({$appearance.Hide()});$appearance.Controls.Add($closeAppearance)
 $appearanceButton=Button '体型・肌色' 500 258 {[void]$appearance.ShowDialog($form)}
 $fbxSettings=New-Object System.Windows.Forms.Form
@@ -129,7 +132,7 @@ $bodyTemplate.Enabled=$false;$bodyMesh.Enabled=$false;$neckOffset.Enabled=$false
 function BodyOptions {
     $shapes=@{}
     foreach($key in $script:bodyShapes.Keys){$shapes[$key]=[double]$script:bodyShapes[$key].Value}
-    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text;fbx_texture=$fbxTexture.Text;fbx_author=$fbxAuthor.Text;fbx_license_url=$fbxLicense.Text}
+    return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;shape=$shapes;match_source_proportions=$matchSource.Checked;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text;fbx_texture=$fbxTexture.Text;fbx_author=$fbxAuthor.Text;fbx_license_url=$fbxLicense.Text}
 }
 $script:springControls=@{}
 $names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸'}
@@ -202,6 +205,7 @@ if(Test-Path $settings){
                     if($v -ge 0.5 -and $v -le 1.5){$script:bodyShapes[$key].Value=$v}
                 }
             }
+            if($s.body_options.PSObject.Properties.Name -contains 'match_source_proportions'){$matchSource.Checked=[bool]$s.body_options.match_source_proportions}
             if($s.body_options.PSObject.Properties.Name -contains 'neck_join'){$neckJoin.Checked=[bool]$s.body_options.neck_join}
             if($s.body_options.PSObject.Properties.Name -contains 'skin_match'){$skinMatch.Checked=[bool]$s.body_options.skin_match}
             if($s.body_options.PSObject.Properties.Name -contains 'skin_strength'){

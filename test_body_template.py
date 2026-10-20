@@ -103,6 +103,13 @@ class BodyTemplateTest(unittest.TestCase):
         self.assertEqual(mats[len(source['materials'])-1]['textureProperties']['_MainTex'],1)
         image=source['images'][1];view=source['bufferViews'][image['bufferView']];data=Buffer(source,c).data
         self.assertEqual(bytes(data[view['byteOffset']:view['byteOffset']+view['byteLength']]),b'image bytes')
+    def test_proportion_matching_can_be_disabled_and_keeps_head(self):
+        d,c,b=self.source();head=d['meshes'][0]['primitives'][0]['attributes']['POSITION']
+        before=Buffer(d,c).read(head)
+        c,report,_=replace_body(d,c,b,self.path,{'match_source_proportions':False},log=lambda _:None)
+        self.assertEqual(report['proportionMatching']['status'],'disabled')
+        np.testing.assert_array_equal(Buffer(d,c).read(head),before)
+
     def test_missing_neck_rejected(self):
         d,c,b=self.source();b.pop('neck')
         with self.assertRaisesRegex(ValueError,'首'):replace_body(d,c,b,self.path)
