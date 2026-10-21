@@ -44,11 +44,12 @@ class HeadTransplantTest(unittest.TestCase):
             for joint,matrix in zip(skin['joints'],inverse):np.testing.assert_allclose(world[joint]@matrix,np.eye(4),atol=1e-6)
     def test_head_hair_hierarchy_is_attached_to_template_head(self):
         d,c,b=self.source();hair=len(d['nodes'])
-        d['nodes'].extend([{'name':'Hair','translation':[0,.05,0],'children':[hair+1]},{'name':'HairEnd','translation':[0,-.1,0]}]);d['nodes'][b['head']].setdefault('children',[]).append(hair)
+        d['nodes'].extend([{'name':'Hair','extras':{'mmdPhysics':{'mode':'fixed','rigidModes':[0]}},'translation':[0,.05,0],'children':[hair+1]},{'name':'HairEnd','translation':[0,-.1,0]}]);d['nodes'][b['head']].setdefault('children',[]).append(hair)
         before,_=world_matrices(d)
         c,r,_=transplant_head(d,c,b,self.path,log=lambda _:None);after,parents=world_matrices(d)
         root=next(i for i,n in enumerate(d['nodes']) if n.get('name')=='MMDHead_Hair')
         self.assertEqual(parents[root],b['head']);self.assertTrue(d['nodes'][root]['children'])
+        self.assertEqual(d['nodes'][root]['extras']['mmdPhysics']['mode'],'fixed')
         np.testing.assert_allclose(after[root][:3,3],before[hair][:3,3]*r['headScale']+r['headTranslation'],atol=1e-6)
     def test_original_body_fitting_settings_have_no_effect(self):
         a,c,b=self.source();c,r,_=transplant_head(a,c,b,self.path,{'width':.5,'shape':{'bust':1.5},'match_source_proportions':True},log=lambda _:None)

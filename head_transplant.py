@@ -61,7 +61,10 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
         if any(k in original for k in ('mesh','camera')):continue
         name='MMDHead_'+original.get('name',str(old))
         while name in names:name+='_' 
-        names.add(name);node_map[old]=len(donor['nodes']);donor['nodes'].append({'name':name})
+        names.add(name);node_map[old]=len(donor['nodes']);node={'name':name}
+        hint=original.get('extras',{}).get('mmdPhysics')
+        if hint is not None:node['extras']={'mmdPhysics':copy.deepcopy(hint)}
+        donor['nodes'].append(node)
     for old,new in list(node_map.items()):
         if old in (bones['head'],bones['neck']):continue
         parent=sp.get(old);parent_new=node_map.get(parent,db['head'])

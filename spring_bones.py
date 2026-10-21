@@ -67,7 +67,17 @@ def setup_springs(document, original_names=None, options=None, active_joints=Non
         name = names.get(nodes[i].get('name'), nodes[i].get('name', ''))
         category = classify(name)
         if i not in protected and category and (active_joints is None or descendants_set(nodes,i).intersection(active_joints)):
-            candidates[i] = category
+            mode=nodes[i].get('extras',{}).get('mmdPhysics',{}).get('mode')
+            if mode in ('fixed','control'):
+                report['skipped'].append({'node':i,'name':nodes[i]['name'],'category':category,'reason':'pmx_'+mode})
+            else:candidates[i] = category
+    # VRM0 recursively simulates a root's descendants. Starting above a fixed
+    # anchor would still move that anchor, so promote only the lower chains.
+    fixed={i for i,n in enumerate(nodes) if n.get('extras',{}).get('mmdPhysics',{}).get('mode') in ('fixed','control')}
+    for i in list(candidates):
+        if fixed.intersection(descendants_set(nodes,i)-{i}):
+            report['skipped'].append({'node':i,'name':nodes[i]['name'],'category':candidates[i],'reason':'contains_fixed_anchor'})
+            del candidates[i]
     # If a candidate is off, its descendants must not leak into another category.
     roots = []
     for i, category in candidates.items():

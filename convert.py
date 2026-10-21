@@ -11,6 +11,7 @@ from blender_image_io import BlenderImages
 from neck_stitch import stitch_neck
 from template_source import prepare_template
 from normalize import normalize
+from pmx_physics import read_physics_hints,annotate_nodes
 from texture_paths import texture_path
 
 config = json.loads(Path(sys.argv[sys.argv.index('--')+1]).read_text(encoding='utf-8-sig'))
@@ -216,6 +217,7 @@ def run():
     log('6/6 VRM 0.xを作成しています')
     node_names={n.get('name'):i for i,n in enumerate(document['nodes'])}
     mapped={role:node_names[name] for role,name in bone_names.items() if name in node_names}
+    physics_hint_counts=annotate_nodes(document,original_names,read_physics_hints(model))
     finger_report=validate_fingers(document,mapped)
     bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     chunks=normalize(document,chunks,mapped,log)
@@ -257,7 +259,7 @@ def run():
     spring_report=setup_springs(document,original_names,config.get('spring_options'),active_joints=weighted_joints)
     report.update({'conversionMode':mode,'bodyTemplateReport':body_report,'fingerReport':finger_report,'springBoneReport':spring_report,
                    'springBones':bool(spring_report['groups']),'blender':bpy.app.version_string,'source':str(model),
-                   'normalized':True,'tposeBaked':True,
+                   'normalized':True,'tposeBaked':True,'pmxPhysicsHints':physics_hint_counts,
                    'vertices':vertices,'triangles':triangles,'warnings':warnings+finger_report['warnings']+spring_report['warnings']+[
                      'MMD剛体・ジョイントの完全再現、材質モーフ、ボーンモーフ、MMD特殊シェーダーは未対応です。',
                      '表情はglTFに出力された頂点モーフのみ対応します。',
