@@ -11,7 +11,8 @@ from blender_image_io import BlenderImages
 from neck_stitch import stitch_neck
 from template_source import prepare_template
 from normalize import normalize
-from pmx_physics import read_physics_hints,annotate_nodes
+from pmx_physics import read_physics_data,annotate_nodes
+from pmx_colliders import annotate_colliders
 from texture_paths import texture_path
 
 config = json.loads(Path(sys.argv[sys.argv.index('--')+1]).read_text(encoding='utf-8-sig'))
@@ -220,7 +221,10 @@ def run():
     node_names={n.get('name'):i for i,n in enumerate(document['nodes'])}
     mapped={role:node_names[name] for role,name in bone_names.items() if name in node_names}
     validate_required_bones(mapped)
-    physics_hint_counts=annotate_nodes(document,original_names,read_physics_hints(model))
+    physics_data=read_physics_data(model)
+    physics_hint_counts=annotate_nodes(document,original_names,physics_data['hints'])
+    collision_import=annotate_colliders(document,original_names,physics_data)
+    if any(a['samplingCapped'] for a in collision_import['approximations']):warnings.append('一部の剛体は球の数を制限して近似しました。詳細はpmxCollisionImport.approximationsを確認してください。')
     finger_report=validate_fingers(document,mapped)
     bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     chunks=normalize(document,chunks,mapped,log)
@@ -263,7 +267,7 @@ def run():
     spring_report=setup_springs(document,original_names,config.get('spring_options'),active_joints=weighted_joints)
     report.update({'conversionMode':mode,'bodyTemplateReport':body_report,'fingerReport':finger_report,'springBoneReport':spring_report,
                    'springBones':bool(spring_report['groups']),'blender':bpy.app.version_string,'source':str(model),
-                   'normalized':True,'tposeBaked':True,'pmxPhysicsHints':physics_hint_counts,
+                   'normalized':True,'tposeBaked':True,'pmxPhysicsHints':physics_hint_counts,'pmxCollisionImport':collision_import,
                    'vertices':vertices,'triangles':triangles,'warnings':warnings+finger_report['warnings']+spring_report['warnings']+[
                      'MMD剛体・ジョイントの完全再現、材質モーフ、ボーンモーフ、MMD特殊シェーダーは未対応です。',
                      '表情はglTFに出力された頂点モーフのみ対応します。',
@@ -279,6 +283,8 @@ def run():
     target.with_suffix('.conversion.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     for warning in report['warnings']:log('注意: '+warning)
     log('表情プリセット: '+(', '.join(report['expressions']) or 'なし'))
+    log('PMX衝突設定: 剛体 '+str(collision_import['sourceRigidCount'])+' / 対応 '+str(collision_import['mappedRigidCount'])+' / 未対応 '+str(len(collision_import['skipped'])))
+    log('衝突コライダー: PMX由来 '+str(spring_report.get('pmxColliderCount',0))+' / 自動補完 '+str(spring_report.get('fallbackColliderCount',0)))
     er=report['expressionReport']
     log(f"表情モーフ: {er['uniqueMorphCount']}種類 / プリセット {er['presetCount']} / 追加表情 {er['customCount']}")
     for preset in er['presets']:

@@ -64,7 +64,15 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
         names.add(name);node_map[old]=len(donor['nodes']);node={'name':name}
         hint=original.get('extras',{}).get('mmdPhysics')
         if hint is not None:node['extras']={'mmdPhysics':copy.deepcopy(hint)}
+        if original.get('extras',{}).get('mmdRigidBodies'):
+            from pmx_colliders import scale_metadata
+            node.setdefault('extras',{}).update(scale_metadata({'mmdRigidBodies':original['extras']['mmdRigidBodies']},scale))
         donor['nodes'].append(node)
+    for role in ('head','neck'):
+        old,new=bones[role],db[role]
+        if document['nodes'][old].get('extras',{}).get('mmdRigidBodies'):
+            from pmx_colliders import scale_metadata
+            donor['nodes'][new].setdefault('extras',{}).update(scale_metadata({'mmdRigidBodies':document['nodes'][old]['extras']['mmdRigidBodies']},scale))
     for old,new in list(node_map.items()):
         if old in (bones['head'],bones['neck']):continue
         parent=sp.get(old);parent_new=node_map.get(parent,db['head'])
@@ -178,3 +186,4 @@ def transplant_head(document,chunks,bones,template_path,options=None,log=print,i
     document.clear();document.update(donor);bones.clear();bones.update(result_bones)
     log('補完素体の骨格・体型を維持し、MMDの頭部を首の位置へ移植しました。')
     return dst.finish(),report,props
+

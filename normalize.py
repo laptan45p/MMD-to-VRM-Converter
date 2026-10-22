@@ -116,6 +116,8 @@ def normalize(doc,chunks,bones,log=print):
                     delta=read(index);delta=np.einsum('vab,vb->va',deform[:,:3,:3],delta)
                     write(index,delta,sparse=True);updated.add(index)
     # New joint axes are all world axes; mesh vertices above are baked into world space.
+    from pmx_colliders import rebase_colliders
+    rebase_colliders(doc['nodes'],posed)
     positions=[m[:3,3] for m in posed]
     for i,node in enumerate(doc['nodes']):
         for k in ['matrix','rotation','scale']:node.pop(k,None)

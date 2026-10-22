@@ -1,4 +1,4 @@
-"""Read fixed/dynamic bone hints, not rigid-body simulation parameters."""
+"""Read PMX rigid bodies and fixed/dynamic bone hints without simulating Bullet."""
 import io
 import struct
 
@@ -19,7 +19,7 @@ class Reader:
     def string(self):return self.read(self.count()).decode(self.encoding)
 
 
-def read_physics_hints(path):
+def read_physics_data(path):
     r=Reader(path.read_bytes())
     if r.read(4)!=b'PMX ':raise ValueError('Not a PMX file')
     r.number('f');header=r.read(r.number('B'))
@@ -35,9 +35,9 @@ def read_physics_hints(path):
     for _ in range(r.count()):r.string()
     for _ in range(r.count()):
         r.string();r.string();r.read(65+2*h[3]+1);shared=r.number('B');r.read(1 if shared else h[3]);r.string();r.read(4)
-    bones=[];parents=[]
+    bones=[];parents=[];positions=[]
     for _ in range(r.count()):
-        bones.append(r.string());r.string();r.read(12);parents.append(r.index(h[5]));r.read(4);flags=r.number('H')
+        bones.append(r.string());r.string();positions.append(struct.unpack('<3f',r.read(12)));parents.append(r.index(h[5]));r.read(4);flags=r.number('H')
         r.read(h[5] if flags&1 else 12)
         if flags&0x0300:r.read(h[5]+4)
         if flags&0x0400:r.read(12)
@@ -56,11 +56,21 @@ def read_physics_hints(path):
     for _ in range(r.count()):
         r.string();r.string();r.read(1)
         for _ in range(r.count()):r.read(h[5] if r.number('B')==0 else h[6])
-    modes={}
-    for _ in range(r.count()):
-        r.string();r.string();bone=r.index(h[5]);r.read(60);mode=r.number('B')
-        if mode not in (0,1,2):raise ValueError('Invalid PMX rigid-body mode')
+    modes={};rigids=[]
+    for index in range(r.count()):
+        name=r.string();english=r.string();bone=r.index(h[5]);group=r.number('B');mask=r.number('H');shape=r.number('B')
+        size=struct.unpack('<3f',r.read(12));position=struct.unpack('<3f',r.read(12));rotation=struct.unpack('<3f',r.read(12))
+        parameters=struct.unpack('<5f',r.read(20));mode=r.number('B')
+        if mode not in (0,1,2) or shape not in (0,1,2) or not 0<=group<16:raise ValueError('Invalid PMX rigid body')
+        rigids.append({'index':index,'name':name,'englishName':english,'boneIndex':bone,
+            'boneName':bones[bone] if 0<=bone<len(bones) else None,'group':group,
+            'collisionMask':mask,'shape':shape,'size':list(size),'position':list(position),
+            'rotation':list(rotation),'mass':parameters[0],'linearDamping':parameters[1],
+            'angularDamping':parameters[2],'restitution':parameters[3],'friction':parameters[4],'mode':mode})
         if 0<=bone<len(bones):modes.setdefault(bone,set()).add(mode)
+    # Older internal fixtures end here. Real PMX files include a joint count.
+    remainder=len(r.file.getbuffer())-r.file.tell()
+    joint_count=r.count() if remainder else 0
     controls=set()
     for bone in modes:
         current=parents[bone];seen=set()
@@ -73,7 +83,12 @@ def read_physics_hints(path):
     for i,values in modes.items():
         # Conflicting fixed/dynamic bodies are kept fixed conservatively.
         result[bones[i]]={'mode':'fixed' if 0 in values else 'dynamic','rigidModes':sorted(values)}
-    return result
+    return {'hints':result,'rigidBodies':rigids,'jointCount':joint_count,
+        'bones':[{'name':n,'parent':parents[i],'position':list(positions[i])} for i,n in enumerate(bones)]}
+
+
+def read_physics_hints(path):
+    return read_physics_data(path)['hints']
 
 
 def annotate_nodes(document,original_names,hints):
@@ -83,3 +98,4 @@ def annotate_nodes(document,original_names,hints):
         if hint is not None:
             node.setdefault('extras',{})['mmdPhysics']=hint.copy();counts[hint['mode']]+=1
     return counts
+

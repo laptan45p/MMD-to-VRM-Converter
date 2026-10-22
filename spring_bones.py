@@ -2,13 +2,18 @@
 import math
 import re
 import unicodedata
+from pmx_colliders import collide
 
-CATEGORIES = ('hair', 'ribbon', 'sleeve', 'skirt', 'chest')
-LABELS = dict(zip(CATEGORIES, ('髪', 'リボン・紐', '袖', 'スカート', '胸')))
+CATEGORIES = ('hair', 'ribbon', 'sleeve', 'skirt', 'chest', 'other')
+LABELS = dict(zip(CATEGORIES, ('髪', 'リボン・紐', '袖', 'スカート', '胸', 'その他の揺れ物')))
 # stiffness, drag, gravity, radius in meters at approximately adult scale
 BASE = {'hair': (0.8, 0.4, 0.04, 0.012), 'ribbon': (1.1, 0.45, 0.03, 0.008),
         'sleeve': (1.8, 0.55, 0.04, 0.012), 'skirt': (2.3, 0.6, 0.03, 0.014),
-        'chest': (2.5, 0.6, 0.0, 0.006)}
+        'chest': (2.5, 0.6, 0.0, 0.006), 'other': (1.1, 0.45, 0.03, 0.008)}
+
+def vrm0_offset(value):
+    # VRM0 collider offsets use Unity coordinates, unlike glTF nodes.
+    return {'x':float(value[0]),'y':float(value[1]),'z':-float(value[2])}
 
 def text_key(value):
     return unicodedata.normalize('NFKC', value).casefold()
@@ -66,6 +71,7 @@ def setup_springs(document, original_names=None, options=None, active_joints=Non
     for i in sorted(joints):
         name = names.get(nodes[i].get('name'), nodes[i].get('name', ''))
         category = classify(name)
+        if category is None and nodes[i].get('extras',{}).get('mmdPhysics',{}).get('mode')=='dynamic':category='other'
         if i not in protected and category and (active_joints is None or descendants_set(nodes,i).intersection(active_joints)):
             mode=nodes[i].get('extras',{}).get('mmdPhysics',{}).get('mode')
             if mode in ('fixed','control'):
@@ -113,7 +119,7 @@ def setup_springs(document, original_names=None, options=None, active_joints=Non
             centers = [[(b[k]-a[k])*fraction for k in range(3)] for fraction in (0.25,0.55,0.85)]
         indexes[role] = len(colliders)
         colliders.append({'node':node, 'colliders':[
-            {'offset':dict(zip(('x','y','z'), c)), 'radius':radius*scale} for c in centers]})
+            {'offset':vrm0_offset(c), 'radius':radius*scale} for c in centers]})
     if settings['colliders'] and roots:
         sphere_group('head', 0.085, [0,0.055*scale,0])
         sphere_group('chest', 0.10)
@@ -124,6 +130,18 @@ def setup_springs(document, original_names=None, options=None, active_joints=Non
             sphere_group(side+'LowerArm',0.028,end=side+'Hand')
             sphere_group(side+'UpperLeg',0.045,end=side+'LowerLeg')
             sphere_group(side+'LowerLeg',0.035,end=side+'Foot')
+    fallback_count=len(colliders);source_colliders=[]
+    if settings['colliders'] and roots:
+        for node in sorted(joints):
+            if active_joints is not None and node not in active_joints:continue
+            for body in nodes[node].get('extras',{}).get('mmdRigidBodies',[]):
+                if body['mode']!=0:continue
+                index=len(colliders)
+                colliders.append({'node':node,'colliders':[{'offset':vrm0_offset(s['offset']),'radius':s['radius']} for s in body['spheres']]})
+                source_colliders.append((index,node,body))
+    report['pmxColliderCount']=len(source_colliders)
+    report['fallbackColliderCount']=fallback_count
+    report['sourceFilterPolicy']='intersection_for_recursive_chain'
     groups = []
     for i, category, chain in roots:
         p = settings[category]
@@ -131,18 +149,40 @@ def setup_springs(document, original_names=None, options=None, active_joints=Non
         elif category == 'sleeve': roles = ['chest','spine','hips']
         elif category == 'skirt': roles = ['hips','leftUpperLeg','rightUpperLeg','leftLowerLeg','rightLowerLeg']
         else: roles = []  # Breast/torso self-collisions can cause severe popping.
-        used_colliders = [indexes[r] for r in roles if r in indexes and humanoid[r] not in chain]
+        source_bodies=[b for node in chain for b in nodes[node].get('extras',{}).get('mmdRigidBodies',[]) if b['mode'] in (1,2)]
+        if source_bodies:
+            used_colliders=[index for index,node,b in source_colliders if node not in chain and all(collide(b,s) for s in source_bodies)]
+            collision_source='pmx'
+        else:
+            used_colliders = [indexes[r] for r in roles if r in indexes and humanoid[r] not in chain]
+            collision_source='fallback'
+        hit_radius=max((b['hitRadius'] for b in source_bodies),default=p['radius']*scale)
         groups.append({'comment':LABELS[category]+': '+nodes[i]['name'],
             'stiffiness':p['stiffness'], 'gravityPower':p['gravity'],
             'gravityDir':{'x':0,'y':-1,'z':0}, 'dragForce':p['drag'],
-            'center':-1, 'hitRadius':p['radius']*scale, 'bones':[i], 'colliderGroups':used_colliders})
+            'center':-1, 'hitRadius':hit_radius, 'bones':[i], 'colliderGroups':used_colliders})
         report['groups'].append({'category':category,'root':nodes[i]['name'],
-            'node':i,'chainNodes':chain,'colliderGroups':used_colliders})
+            'node':i,'chainNodes':chain,'colliderGroups':used_colliders,'collisionSource':collision_source,
+            'sourceRigidIndexes':[b['index'] for b in source_bodies],'hitRadiusSource':'pmx' if source_bodies else 'settings'})
+    # Drop unused source/fallback groups and remap references before writing VRM.
+    used=sorted({index for g in groups for index in g['colliderGroups']})
+    remap={old:new for new,old in enumerate(used)}
+    report['availablePmxColliderCount']=len(source_colliders)
+    report['pmxColliderCount']=sum(index>=fallback_count for index in used)
+    report['fallbackColliderCount']=sum(index<fallback_count for index in used)
+    report['omittedDynamicRigidColliders']=len({(b.get('sourceKey'),b['index']) for n in nodes for b in n.get('extras',{}).get('mmdRigidBodies',[]) if b['mode']!=0})
+    for g in groups:g['colliderGroups']=[remap[index] for index in g['colliderGroups']]
+    for g in report['groups']:g['colliderGroups']=[remap[index] for index in g['colliderGroups']]
+    colliders=[colliders[index] for index in used]
+    report['sphereCount']=sum(len(g['colliders']) for g in colliders)
     detected = {category for _, category, _ in roots}
     for category in CATEGORIES:
-        if settings[category]['enabled'] and category not in detected:
+        if category!='other' and settings[category]['enabled'] and category not in detected:
             report['warnings'].append(LABELS[category]+'の有効なボーン連鎖を検出できませんでした。')
-    report['warnings'].append('揺れと衝突は名前・骨格からの仮設定です。配信アプリで動作を確認してください。')
+    report['warnings'].append('衝突は元PMXの固定剛体と衝突グループを優先し、元情報がない連鎖は自動補完します。配信アプリで確認してください。')
+    if source_colliders:
+        report['warnings'].append('VRM0ではカプセル・箱を球の集合で近似します。動的剛体同士の衝突、質量・摩擦・ジョイント制限は完全再現しません。')
     vrm['secondaryAnimation'] = {'boneGroups':groups, 'colliderGroups':colliders}
     report['colliderCount'] = len(colliders)
     return report
+

@@ -6,8 +6,8 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.9.5'
-$form.Size = New-Object System.Drawing.Size(820,910)
+$form.Text = 'MMD -> VRM 0.x / 0.9.6'
+$form.Size = New-Object System.Drawing.Size(820,942)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
 $form.MinimumSize = $form.Size
@@ -141,13 +141,13 @@ function BodyOptions {
     return @{mesh_name=$bodyMesh.Text;neck_offset=[double]$neckOffset.Value;width=[double]$bodyWidth.Value;head_scale=[double]$bodyWidth.Value;shape=$shapes;match_source_proportions=$matchSource.Checked;skin_match=$skinMatch.Checked;skin_strength=[double]$skinStrength.Value;neck_join=$neckJoin.Checked;source_skin_material=$sourceSkin.Text;template_skin_material=$templateSkin.Text;fbx_texture=$fbxTexture.Text;fbx_author=$fbxAuthor.Text;fbx_license_url=$fbxLicense.Text}
 }
 $script:springControls=@{}
-$names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸'}
-$values=@{hair=@(0.8,0.4,0.04,0.012);ribbon=@(1.1,0.45,0.03,0.008);sleeve=@(1.8,0.55,0.04,0.012);skirt=@(2.3,0.6,0.03,0.014);chest=@(2.5,0.6,0,0.006)}
+$names=@{hair='髪';ribbon='リボン・紐';sleeve='袖';skirt='スカート';chest='胸';other='その他の揺れ物'}
+$values=@{hair=@(0.8,0.4,0.04,0.012);ribbon=@(1.1,0.45,0.03,0.008);sleeve=@(1.8,0.55,0.04,0.012);skirt=@(2.3,0.6,0.03,0.014);chest=@(2.5,0.6,0,0.006);other=@(1.1,0.45,0.03,0.008)}
 $header=New-Object System.Windows.Forms.Label
 $header.Text='揺れの部位                  硬さ                 減衰                 重力                 半径 (m)'
 $header.Location=New-Object System.Drawing.Point(15,440);$header.Size=New-Object System.Drawing.Size(765,25);$form.Controls.Add($header)
 $row=0
-foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
+foreach($category in @('hair','ribbon','sleeve','skirt','chest','other')){
     $y=468+$row*32
     $enabled=New-Object System.Windows.Forms.CheckBox
     $enabled.Text=$names[$category];$enabled.Checked=$true
@@ -165,11 +165,11 @@ foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
     $script:springControls[$category]=$controls;$row++
 }
 $collisions=New-Object System.Windows.Forms.CheckBox
-$collisions.Text='髪・衣装の衝突判定を追加（仮設定） / 胸は控えめな初期値'
-$collisions.Checked=$true;$collisions.Location=New-Object System.Drawing.Point(15,633);$collisions.Size=New-Object System.Drawing.Size(765,26);$form.Controls.Add($collisions)
+$collisions.Text='元MMDの衝突設定を引き継ぐ（不足部分は自動補完）'
+$collisions.Checked=$true;$collisions.Location=New-Object System.Drawing.Point(15,665);$collisions.Size=New-Object System.Drawing.Size(765,26);$form.Controls.Add($collisions)
 function SpringOptions {
     $options=@{colliders=$collisions.Checked}
-    foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
+    foreach($category in @('hair','ribbon','sleeve','skirt','chest','other')){
         $c=$script:springControls[$category]
         $options[$category]=@{enabled=$c.enabled.Checked;stiffness=[double]$c.stiffness.Value;drag=[double]$c.drag.Value;gravity=[double]$c.gravity.Value;radius=[double]$c.radius.Value}
     }
@@ -177,10 +177,10 @@ function SpringOptions {
 }
 $logBox=New-Object System.Windows.Forms.TextBox
 $logBox.Multiline=$true;$logBox.ReadOnly=$true;$logBox.ScrollBars='Both';$logBox.WordWrap=$false
-$logBox.Location=New-Object System.Drawing.Point(15,720);$logBox.Size=New-Object System.Drawing.Size(765,135)
+$logBox.Location=New-Object System.Drawing.Point(15,752);$logBox.Size=New-Object System.Drawing.Size(765,135)
 $logBox.Anchor='Top,Bottom,Left,Right';$form.Controls.Add($logBox)
 $status=New-Object System.Windows.Forms.Label
-$status.Text='待機中';$status.Location=New-Object System.Drawing.Point(230,677);$status.Size=New-Object System.Drawing.Size(550,30)
+$status.Text='待機中';$status.Location=New-Object System.Drawing.Point(230,709);$status.Size=New-Object System.Drawing.Size(550,30)
 $form.Controls.Add($status)
 $browseBlender=Button '選択' 700 18 {
     $d=New-Object System.Windows.Forms.OpenFileDialog;$d.Filter='Blender|blender.exe'
@@ -226,7 +226,7 @@ if(Test-Path $settings){
         }
         if($s.spring_options){
             $collisions.Checked=[bool]$s.spring_options.colliders
-            foreach($category in @('hair','ribbon','sleeve','skirt','chest')){
+            foreach($category in @('hair','ribbon','sleeve','skirt','chest','other')){
                 $saved=$s.spring_options.$category
                 if($saved){
                     $script:springControls[$category].enabled.Checked=[bool]$saved.enabled
@@ -267,7 +267,7 @@ $timer.Add_Tick({
         $script:process.Dispose();$script:process=$null;$runButton.Enabled=$true;$stopButton.Enabled=$false
     }
 })
-$runButton=Button '変換開始' 15 672 {
+$runButton=Button '変換開始' 15 704 {
     try{
         if(-not(Test-Path -LiteralPath $blender.Text -PathType Leaf)){throw 'Blender.exeを指定してください。'}
         if([System.IO.Path]::GetFileName($blender.Text) -ne 'blender.exe'){throw 'blender.exeを選んでください。'}
@@ -302,7 +302,7 @@ $runButton=Button '変換開始' 15 672 {
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message,'エラー')|Out-Null
     }
 }
-$stopButton=Button '停止' 115 672 {
+$stopButton=Button '停止' 115 704 {
     if($script:process -and -not $script:process.HasExited){
         $script:process.Kill();$status.Text='停止しています'
     }
