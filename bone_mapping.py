@@ -1,6 +1,6 @@
 """Resolve standard MMD finger variants without changing mesh weights."""
 import unicodedata
-from vrm_core import MAP
+from vrm_core import MAP, REQUIRED
 
 def key(name):
     return unicodedata.normalize('NFKC', name).casefold().replace(' ', '').replace('_', '')
@@ -21,9 +21,19 @@ def map_bones(aliases):
             choices += [n.replace('人指','人差し指') for n in names]
         found = set()
         for name in choices: found.update(lookup.get(key(name), set()))
+        # Preserve all existing candidates and ambiguity checks. Short Japanese
+        # hand names are a fallback only, never a competing primary candidate.
+        if not found and role in ('leftHand', 'rightHand'):
+            fallback = '左手' if role == 'leftHand' else '右手'
+            found.update(lookup.get(key(fallback), set()))
         if len(found) == 1: result[role] = found.pop()
         elif len(found) > 1: warnings.append('ボーン候補が複数あり未設定: '+role)
     return result, warnings
+
+def validate_required_bones(mapping, required=REQUIRED):
+    missing = [role for role in required if role not in mapping]
+    if missing:
+        raise ValueError('VRM変換に必要なボーンを特定できません: '+', '.join(missing))
 
 def validate_fingers(document, mapping):
     parents = {c:i for i,n in enumerate(document['nodes']) for c in n.get('children', [])}
@@ -44,3 +54,4 @@ def validate_fingers(document, mapping):
                     used.add(node); assigned.append(role); predecessor = node
     return {'assigned':assigned, 'missing':missing, 'rejected':removed,
         'warnings':['指の向き・握りの変形は配信アプリで確認してください。ボーンの新設やウェイト修正は行いません。']}
+

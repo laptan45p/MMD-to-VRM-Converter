@@ -1,5 +1,6 @@
 """Bake glTF skin into a normalized VRM0 T-pose (requires numpy)."""
 import numpy as np
+from bone_mapping import validate_required_bones
 
 def world_matrices(doc):
     nodes=doc['nodes'];parents={c:i for i,n in enumerate(nodes) for c in n.get('children',[])}
@@ -19,6 +20,8 @@ def world_matrices(doc):
     return [world(i).copy() for i in range(len(nodes))],parents
 
 def normalize(doc,chunks,bones,log=print):
+    validate_required_bones(bones, ['head'] + [side+part for side in ('left','right')
+                            for part in ('UpperArm','LowerArm','Hand')])
     if doc.get('animations'):raise ValueError('Animated GLB normalization is unsupported')
     binary=bytearray(next(b for k,b in chunks if k==0x004E4942))
     types={5120:'i1',5121:'u1',5122:'<i2',5123:'<u2',5125:'<u4',5126:'<f4'}
@@ -126,3 +129,4 @@ def normalize(doc,chunks,bones,log=print):
         write(skin['inverseBindMatrices'],np.array(inverse))
     doc['buffers'][0]['byteLength']=len(binary)
     return [(k,bytes(binary) if k==0x004E4942 else b) for k,b in chunks]
+

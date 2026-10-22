@@ -1,6 +1,6 @@
 # MMD-to-VRM-Converter
 
-MMDのPMXモデルをVRM 0.xへ変換するWindows用ツールです。現在のバージョンは **0.9.4** です。
+MMDのPMXモデルをVRM 0.xへ変換するWindows用ツールです。現在のバージョンは **0.9.5** です。
 
 ### 表情の自動登録
 

@@ -3,7 +3,7 @@ import sys, json, traceback, zipfile, struct, io, os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vrm_core import read_glb, write_glb, package_vrm
-from bone_mapping import map_bones, validate_fingers
+from bone_mapping import map_bones, validate_fingers, validate_required_bones
 from spring_bones import setup_springs
 from body_template import replace_body, active_joints
 from head_transplant import transplant_head
@@ -137,6 +137,8 @@ def run():
     bone_names,mapping_warnings=map_bones(aliases)
     original_names={actual:name for name,actual in aliases.items()}
     log('人型ボーン候補: '+str(len(bone_names)))
+    for warning in mapping_warnings:log('注意: '+warning)
+    validate_required_bones(bone_names)
     # Some MMD models place upper/lower body as siblings. VRM requires hips->spine.
     if 'hips' in bone_names and 'spine' in bone_names:
         bpy.context.view_layer.objects.active=arm;arm.select_set(True)
@@ -217,6 +219,7 @@ def run():
     log('6/6 VRM 0.xを作成しています')
     node_names={n.get('name'):i for i,n in enumerate(document['nodes'])}
     mapped={role:node_names[name] for role,name in bone_names.items() if name in node_names}
+    validate_required_bones(mapped)
     physics_hint_counts=annotate_nodes(document,original_names,read_physics_hints(model))
     finger_report=validate_fingers(document,mapped)
     bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
