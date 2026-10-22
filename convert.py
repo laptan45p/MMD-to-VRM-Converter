@@ -244,6 +244,7 @@ def run():
         bone_names={role:document['nodes'][node]['name'] for role,node in mapped.items()}
     report=package_vrm(document,bone_names,config.get('title') or title,
                        config['author'],config.get('license_url',''))
+    warnings.extend(report['expressionReport']['warnings'])
     if body_report:
         for index,properties in body_materials.items():
             document['extensions']['VRM']['materialProperties'][index]=properties
@@ -275,6 +276,11 @@ def run():
     target.with_suffix('.conversion.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
     for warning in report['warnings']:log('注意: '+warning)
     log('表情プリセット: '+(', '.join(report['expressions']) or 'なし'))
+    er=report['expressionReport']
+    log(f"表情モーフ: {er['uniqueMorphCount']}種類 / プリセット {er['presetCount']} / 追加表情 {er['customCount']}")
+    for preset in er['presets']:
+        if preset['status']=='partial':
+            log('表情の一部を自動設定できません: '+preset['preset']+' / '+', '.join(preset['missingComponents']))
     log('完了: '+str(target))
     Path(config['work'],'success.json').write_text(json.dumps({'output':str(target)}),encoding='utf-8')
 
@@ -282,3 +288,4 @@ try:run()
 except Exception:
     log(traceback.format_exc())
     sys.exit(1)
+
