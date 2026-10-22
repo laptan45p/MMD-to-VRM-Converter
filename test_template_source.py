@@ -24,7 +24,7 @@ class TemplateSourceTest(unittest.TestCase):
         path=self.archive({'body.fbx':b'fbx','BaseBody/Skin1.png':b'base'})
         override=self.root/'custom.png';override.write_bytes(b'custom')
         _,texture,_=resolve_template(path,self.root/'work',{'fbx_texture':str(override)})
-        self.assertEqual(texture,override)
+        self.assertEqual(texture.resolve(),override.resolve())
     def test_vrm_in_zip_needs_no_texture(self):
         model,texture,r=resolve_template(self.archive({'template.vrm':b'vrm'}),self.root/'work')
         self.assertEqual(model.suffix,'.vrm');self.assertIsNone(texture)
@@ -63,3 +63,4 @@ class ExportFormatCompatibilityTest(unittest.TestCase):
     def test_missing_supported_image_format_is_reported(self):
         with self.assertRaisesRegex(RuntimeError,'画像形式'):
             fbx_export_options(self.properties(('JPEG','NONE')),Path('body.glb'))
+
