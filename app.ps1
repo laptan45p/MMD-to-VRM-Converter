@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $script:process = $null
 $script:job = $null
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'MMD -> VRM 0.x / 0.9.2'
+$form.Text = 'MMD -> VRM 0.x / 0.9.3'
 $form.Size = New-Object System.Drawing.Size(820,910)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Yu Gothic UI',10)
@@ -316,3 +316,4 @@ $form.Add_FormClosing({
     $timer.Stop()
 })
 [void]$form.ShowDialog()
+

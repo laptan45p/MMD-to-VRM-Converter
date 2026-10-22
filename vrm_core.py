@@ -1,6 +1,7 @@
 """Small VRM 0.x packager. Blender performs geometry/skinning export."""
 import json
 import struct
+from expressions import build_expressions
 
 MAP = {'hips':['下半身'], 'spine':['上半身'], 'chest':['上半身2'],
        'neck':['首'], 'head':['頭'], 'leftEye':['左目'], 'rightEye':['右目']}
@@ -16,9 +17,6 @@ for side, jp in [('left','左'), ('right','右')]:
 REQUIRED = ['hips','spine','head','leftUpperArm','leftLowerArm','leftHand',
             'rightUpperArm','rightLowerArm','rightHand','leftUpperLeg',
             'leftLowerLeg','leftFoot','rightUpperLeg','rightLowerLeg','rightFoot']
-EXPRESSIONS = {'blink':['まばたき'], 'a':['あ'], 'i':['い'], 'u':['う'],
-               'e':['え'], 'o':['お'], 'joy':['笑い','にこり'],
-               'angry':['怒り'], 'sorrow':['悲しい','困る'], 'fun':['にこり']}
 
 def read_glb(path):
     data = path.read_bytes()
@@ -79,17 +77,7 @@ def package_vrm(document, bone_names, title, author, license_url):
         for a,b in zip(chain,chain[1:]):
             if not ancestor(mapping[a],mapping[b]):
                 raise ValueError('Invalid humanoid hierarchy: '+a+' -> '+b)
-    groups=[]
-    for preset, candidates in EXPRESSIONS.items():
-        binds=[]
-        for mesh_index,mesh in enumerate(document.get('meshes',[])):
-            targets=mesh.get('extras',{}).get('targetNames',[])
-            name=next((name for name in candidates if name in targets),None)
-            if name:
-                binds.append({'mesh':mesh_index,'index':targets.index(name),'weight':100})
-        if binds:
-            groups.append({'name':preset,'presetName':preset,'binds':binds,
-                           'materialValues':[],'isBinary':False})
+    groups, expression_report = build_expressions(document)
     materials=[]
     for m in document.get('materials',[]):
         pbr=m.get('pbrMetallicRoughness',{})
@@ -114,7 +102,7 @@ def package_vrm(document, bone_names, title, author, license_url):
           'tagMap':{'RenderType':{'OPAQUE':'Opaque','MASK':'TransparentCutout','BLEND':'Transparent'}[mode]}})
     curve={'curve':[0,0,0,1,1,1,1,0], 'xRange':90, 'yRange':10}
     document.setdefault('extensions',{})['VRM']={
-        'exporterVersion':'MMD VRM Tool 0.9.2','specVersion':'0.0',
+        'exporterVersion':'MMD VRM Tool 0.9.3','specVersion':'0.0',
         'meta':{'title':title,'version':'1.0','author':author,'contactInformation':'',
           'reference':'','allowedUserName':'OnlyAuthor','violentUssageName':'Disallow',
           'sexualUssageName':'Disallow','commercialUssageName':'Disallow',
@@ -132,5 +120,7 @@ def package_vrm(document, bone_names, title, author, license_url):
         'materialProperties':materials}
     used=document.setdefault('extensionsUsed',[])
     if 'VRM' not in used:used.append('VRM')
-    return {'humanoid':mapping,'expressions':[g['presetName'] for g in groups],
+    return {'humanoid':mapping,'expressions':[g['presetName'] for g in groups if g['presetName'] != 'unknown'],
+            'expressionReport':expression_report,
             'materials':len(materials),'springBones':False}
+

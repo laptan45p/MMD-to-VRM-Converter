@@ -20,6 +20,9 @@ class CoreTest(unittest.TestCase):
     def test_package_roundtrip(self):
         doc=self.fixture();report=package_vrm(doc,{r:r for r in REQUIRED},'テスト','作者','https://example.com')
         self.assertEqual(report['expressions'],['blink','a'])
+        self.assertEqual(report['expressionReport']['customCount'],2)
+        custom=[g for g in doc['extensions']['VRM']['blendShapeMaster']['blendShapeGroups'] if g['presetName']=='unknown']
+        self.assertEqual([g['name'] for g in custom],['まばたき','あ'])
         self.assertEqual(len(doc['extensions']['VRM']['humanoid']['humanBones']),15)
         self.assertEqual(doc['extensions']['VRM']['materialProperties'][0]['textureProperties']['_MainTex'],0)
         with tempfile.TemporaryDirectory() as d:
@@ -37,3 +40,4 @@ class CoreTest(unittest.TestCase):
             with self.assertRaises(ValueError):read_glb(p)
 
 if __name__=='__main__':unittest.main()
+
