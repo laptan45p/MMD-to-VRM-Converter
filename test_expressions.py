@@ -72,5 +72,36 @@ class ExpressionTest(unittest.TestCase):
             self.assertEqual(g['binds'], [{'mesh': 0, 'index': index, 'weight': 100}])
 
 
+
+class PairedMouthTest(unittest.TestCase):
+    def test_split_corners_combine_both_sides_without_double_applying_full_mouth(self):
+        names = ['笑い', 'なごみ', '困る', '怒り', 'キリッ', '目尻＿下げ',
+                 '左口角上げ', '右口角上げ', '左口角下げ', '右口角下げ', 'ムッ']
+        groups, report = build_expressions({'meshes': [mesh(names)]})
+        presets = {g['presetName']: g for g in groups if g['presetName'] != 'unknown'}
+        self.assertEqual([names[b['index']] for b in presets['joy']['binds']],
+                         ['笑い', '左口角上げ', '右口角上げ'])
+        self.assertEqual([names[b['index']] for b in presets['sorrow']['binds']],
+                         ['目尻＿下げ', '困る', '左口角下げ', '右口角下げ'])
+        self.assertIn('ムッ', [names[b['index']] for b in presets['angry']['binds']])
+        self.assertEqual(next(p for p in report['presets'] if p['preset']=='joy')['missingComponents'], ['brows'])
+        names.append('口角上げ')
+        groups, _ = build_expressions({'meshes': [mesh(names)]})
+        joy = next(g for g in groups if g['presetName']=='joy')
+        self.assertEqual([names[b['index']] for b in joy['binds']], ['笑い', '口角上げ'])
+
+    def test_one_sided_corner_is_not_used_as_symmetric_expression(self):
+        groups, report = build_expressions({'meshes': [mesh(['左口角上げ', '笑い'])]})
+        joy = next(g for g in groups if g['presetName']=='joy')
+        self.assertEqual(len(joy['binds']), 1)
+        self.assertIn('mouth', next(p for p in report['presets'] if p['preset']=='joy')['missingComponents'])
+        self.assertEqual(report['customCount'], 2)
+
+    def test_split_parts_can_be_on_different_meshes_and_keep_original_names(self):
+        groups, report = build_expressions({'meshes': [mesh(['口角上げ左']), mesh(['口角上げ右'])]})
+        joy = next(g for g in groups if g['presetName']=='joy')
+        self.assertEqual([(b['mesh'], b['index']) for b in joy['binds']], [(0,0),(1,0)])
+        self.assertEqual([c['sourceMorph'] for c in report['customExpressions']], ['口角上げ左','口角上げ右'])
+
 if __name__ == '__main__':
     unittest.main()

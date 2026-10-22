@@ -280,7 +280,7 @@ def run():
     log(f"表情モーフ: {er['uniqueMorphCount']}種類 / プリセット {er['presetCount']} / 追加表情 {er['customCount']}")
     for preset in er['presets']:
         if preset['status']=='partial':
-            log('表情の一部を自動設定できません: '+preset['preset']+' / '+', '.join(preset['missingComponents']))
+            log('表情の組み合わせ候補が未検出（モーフ消失を示すものではありません）: '+preset['preset']+' / '+', '.join(preset['missingComponents']))
     log('完了: '+str(target))
     Path(config['work'],'success.json').write_text(json.dumps({'output':str(target)}),encoding='utf-8')
 

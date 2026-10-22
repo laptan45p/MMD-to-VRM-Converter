@@ -1,6 +1,13 @@
 """Build VRM 0.x expressions from exported morph targets, without editing geometry."""
 import unicodedata
 
+# A paired alternative is used only when BOTH sides exist. Prefer a full-mouth
+# morph when available, so a model never receives full + left + right together.
+SMILE_MOUTH = ['にこり口', 'にこり口2', '口角上げ',
+               ('口角上げ左', '口角上げ右'), ('左口角上げ', '右口角上げ'),
+               'にっ', 'にひひ', 'むふふ']
+SAD_MOUTH = ['口角下げ', ('口角下げ左', '口角下げ右'),
+             ('左口角下げ', '右口角下げ')]
 
 # Each component chooses one alias globally, then binds it on every matching mesh.
 # Weights are starting points; models still require visual checking.
@@ -13,16 +20,16 @@ RECIPES = {
     'o': [('mouth', 100, ['お', 'o', 'oh'])],
     'joy': [('eyes', 70, ['笑い', '笑い目', 'なごみ']),
             ('brows', 60, ['にこり', 'にこり眉']),
-            ('mouth', 70, ['にこり口', 'にこり口2', '口角上げ', 'にっ'])],
+            ('mouth', 70, SMILE_MOUTH)],
     'angry': [('eyes', 40, ['キリッ', '怒り目']),
               ('brows', 80, ['怒り', '怒り眉']),
-              ('mouth', 40, ['口角下げ', 'む'])],
-    'sorrow': [('eyes', 60, ['泣き目', '悲しい目']),
+              ('mouth', 40, ['口角下げ', 'む', 'ムッ', *SAD_MOUTH[1:]])],
+    'sorrow': [('eyes', 60, ['泣き目', '悲しい目', '目尻下げ', '目尻＿下げ']),
                ('brows', 70, ['困る', '悲しい', '困り眉']),
-               ('mouth', 40, ['口角下げ'])],
+               ('mouth', 40, SAD_MOUTH)],
     'fun': [('eyes', 30, ['なごみ', '笑い']),
             ('brows', 40, ['にこり', 'にこり眉']),
-            ('mouth', 40, ['にこり口', 'にこり口2', '口角上げ'])],
+            ('mouth', 40, SMILE_MOUTH)],
     'blink_l': [('eyes', 100, ['ウィンク', 'ウインク', 'まばたき左', 'まばたき2左'])],
     'blink_r': [('eyes', 100, ['ウィンク右', 'ウインク右', 'まばたき右', 'まばたき2右'])],
 }
@@ -61,7 +68,10 @@ def build_expressions(document):
         for role, weight, aliases in components:
             matches = []
             for alias in aliases:
-                matches = [t for t in targets if normalized(t[2]) == normalized(alias)]
+                required = (alias,) if isinstance(alias, str) else alias
+                parts = [[t for t in targets if normalized(t[2]) == normalized(name)]
+                         for name in required]
+                matches = [t for part in parts for t in part] if all(parts) else []
                 if matches:
                     break
             # Aliases/components must not apply the same morph twice.
